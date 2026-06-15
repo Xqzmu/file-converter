@@ -67,7 +67,6 @@ def apply_template(template: str, info: dict) -> str:
     result = re.sub(r'[\\/*?:"<>|]', "", result)
     return result.strip()
 
-# Эндпоинт для отдачи логотипа, если он лежит в корне проекта
 @app.get("/logo.png")
 async def get_logo():
     if os.path.exists("logo.png"):
@@ -81,7 +80,7 @@ async def main_page():
     <html lang="ru">
     <head>
         <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
         <title>Универсальный PDF Конвертер | Кафедра ИиППО</title>
         <style>
             :root {
@@ -91,13 +90,19 @@ async def main_page():
                 --border-color: #e5e7eb;
             }
 
+            html, body {
+                width: 100%;
+                max-width: 100%;
+                overflow-x: hidden; /* Запрещаем горизонтальный скролл на мобилках */
+            }
+
             body {
                 font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
                 background-color: var(--bg-gray);
                 background-image: 
-                    linear-gradient(135deg, rgba(0, 132, 255, 0.06) 25%, transparent 25%),
-                    linear-gradient(225deg, rgba(0, 132, 255, 0.04) 25%, transparent 25%),
-                    linear-gradient(45deg, rgba(26, 26, 26, 0.02) 25%, transparent 25%);
+                    linear-gradient(135deg, rgba(0, 132, 255, 0.04) 25%, transparent 25%),
+                    linear-gradient(225deg, rgba(0, 132, 255, 0.03) 25%, transparent 25%),
+                    linear-gradient(45deg, rgba(26, 26, 26, 0.01) 25%, transparent 25%);
                 background-size: 400px 400px;
                 background-position: 0 0, 200px 0, 200px 200px;
                 display: flex;
@@ -105,49 +110,52 @@ async def main_page():
                 align-items: center;
                 min-height: 100vh;
                 margin: 0;
-                padding: 20px;
+                padding: 15px;
                 box-sizing: border-box;
                 position: relative;
-                overflow-x: hidden;
             }
 
-            /* Те самые декоративные полосы наискосок на бэкграунде */
-            body::before {
-                content: "";
+            /* Контейнер для декоративных полос, чтобы они не ломали ширину экрана */
+            .bg-lines-wrapper {
                 position: absolute;
-                top: -10%;
-                left: -5%;
-                width: 150%;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                overflow: hidden;
+                pointer-events: none;
+                z-index: 0;
+            }
+            .bg-line-1 {
+                position: absolute;
+                top: -5%;
+                left: -10%;
+                width: 140%;
                 height: 30px;
                 background: linear-gradient(90deg, transparent, var(--primary-blue), transparent);
                 transform: rotate(-15deg);
                 opacity: 0.15;
-                z-index: 0;
-                pointer-events: none;
             }
-            body::after {
-                content: "";
+            .bg-line-2 {
                 position: absolute;
-                top: 40%;
-                right: -10%;
-                width: 120%;
+                top: 35%;
+                right: -20%;
+                width: 140%;
                 height: 15px;
                 background: linear-gradient(90deg, transparent, var(--primary-black), transparent);
                 transform: rotate(-15deg);
                 opacity: 0.08;
-                z-index: 0;
-                pointer-events: none;
             }
 
             .container {
                 background: white;
-                padding: 40px;
+                padding: 35px 25px;
                 border-radius: 16px;
-                box-shadow: 0 20px 40px rgba(0,0,0,0.06);
+                box-shadow: 0 15px 35px rgba(0,0,0,0.05);
                 border-top: 6px solid var(--primary-blue);
                 width: 100%;
-                max-width: 580px;
-                text-align: center;
+                max-width: 540px;
+                box-sizing: border-box;
                 position: relative;
                 z-index: 1;
             }
@@ -160,7 +168,7 @@ async def main_page():
                 margin-bottom: 25px;
             }
             .header-block img {
-                height: 55px;
+                height: 50px;
                 width: auto;
                 object-fit: contain;
             }
@@ -170,14 +178,15 @@ async def main_page():
             h1 { 
                 color: var(--primary-black); 
                 margin: 0; 
-                font-size: 22px; 
+                font-size: 20px; 
                 font-weight: 700;
                 letter-spacing: -0.5px;
+                line-height: 1.2;
             }
             .subtitle { 
                 color: #6b7280; 
                 margin: 2px 0 0 0; 
-                font-size: 13px; 
+                font-size: 11px; 
                 text-transform: uppercase;
                 letter-spacing: 1px;
                 font-weight: 600;
@@ -186,65 +195,67 @@ async def main_page():
             .drop-zone {
                 border: 2px dashed #cbd5e1;
                 border-radius: 10px;
-                padding: 35px 20px;
+                padding: 30px 15px;
                 cursor: pointer;
                 background-color: #fff;
                 transition: all 0.2s ease;
-                margin-bottom: 25px;
+                margin-bottom: 20px;
                 display: flex;
                 flex-direction: column;
                 align-items: center;
             }
             .drop-zone:hover, .drop-zone.dragover {
-                background-color: rgba(0, 132, 255, 0.02);
+                background-color: rgba(0, 132, 255, 0.01);
                 border-color: var(--primary-blue);
             }
             .drop-zone svg {
                 stroke: var(--primary-blue);
-                margin-bottom: 12px;
+                margin-bottom: 10px;
+            }
+            .drop-zone-text {
+                font-weight: 600; 
+                color: var(--primary-black);
+                font-size: 14px;
+                text-align: center;
             }
             
             .template-section {
                 text-align: left;
                 background: #fafafa;
-                padding: 22px;
+                padding: 18px;
                 border-radius: 10px;
                 border: 1px solid var(--border-color);
-                margin-bottom: 25px;
+                margin-bottom: 20px;
+                box-sizing: border-box;
             }
             .template-section h3 { 
                 margin-top: 0; 
                 color: var(--primary-black); 
-                font-size: 15px; 
+                font-size: 14px; 
                 font-weight: 600;
                 border-left: 3px solid var(--primary-black);
                 padding-left: 8px;
             }
-            label { display: block; font-size: 12px; color: #4b5563; margin-bottom: 6px; font-weight: 600; }
+            label { display: block; font-size: 11px; color: #4b5563; margin-bottom: 6px; font-weight: 600; }
             
             input[type="text"] {
                 width: 100%;
-                padding: 12px;
+                padding: 11px;
                 border: 1px solid #cbd5e1;
                 border-radius: 6px;
                 box-sizing: border-box;
                 font-family: 'Courier New', Courier, monospace;
-                font-size: 15px;
+                font-size: 14px;
                 font-weight: 600;
                 color: var(--primary-black);
-                transition: border 0.2s;
-            }
-            input[type="text"]:focus {
-                outline: none;
-                border-color: var(--primary-blue);
             }
             
-            .tags-info { font-size: 12px; color: #4b5563; margin-top: 12px; line-height: 1.6; }
+            .tags-info { font-size: 11px; color: #4b5563; margin-top: 10px; line-height: 1.5; }
             .tags-list { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; }
             .tags-list code { 
                 background: #e1f0ff; 
                 color: #0066cc;
-                padding: 3px 6px; 
+                padding: 2px 5px; 
                 border-radius: 4px; 
                 font-size: 11px; 
                 font-weight: 600;
@@ -254,27 +265,65 @@ async def main_page():
                 background-color: var(--primary-black);
                 color: white;
                 border: none;
-                padding: 15px 28px;
-                font-size: 15px;
+                padding: 14px 20px;
+                font-size: 14px;
                 font-weight: 600;
                 border-radius: 6px;
                 cursor: pointer;
                 width: 100%;
                 transition: all 0.2s;
-                letter-spacing: 0.3px;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+                box-shadow: 0 4px 12px rgba(0,0,0,0.05);
             }
             button:hover { 
                 background-color: var(--primary-blue);
-                box-shadow: 0 4px 12px rgba(0, 132, 255, 0.3);
             }
             button:disabled { background-color: #cbd5e1; color: #94a3b8; cursor: not-allowed; box-shadow: none; }
             
-            #file-list { text-align: left; max-height: 120px; overflow-y: auto; margin-bottom: 20px; font-size: 13px; }
-            .file-item { padding: 6px 10px; background: #f1f5f9; border-left: 3px solid var(--primary-blue); border-radius: 0 4px 4px 0; margin-bottom: 4px; color: var(--primary-black); }
+            #file-list { text-align: left; max-height: 100px; overflow-y: auto; margin-bottom: 15px; font-size: 12px; }
+            .file-item { padding: 5px 8px; background: #f1f5f9; border-left: 3px solid var(--primary-blue); border-radius: 0 4px 4px 0; margin-bottom: 4px; color: var(--primary-black); }
+
+            /* Адаптивные медиа-запросы для мобильных телефонов */
+            @media (max-width: 480px) {
+                body {
+                    padding: 10px;
+                }
+                .container {
+                    padding: 25px 15px;
+                    border-radius: 12px;
+                }
+                .header-block {
+                    flex-direction: column;
+                    gap: 8px;
+                    text-align: center;
+                }
+                .header-block img {
+                    height: 45px;
+                }
+                .title-group {
+                    text-align: center;
+                }
+                h1 {
+                    font-size: 18px;
+                }
+                .drop-zone {
+                    padding: 20px 10px;
+                }
+                .drop-zone-text {
+                    font-size: 13px;
+                }
+                input[type="text"] {
+                    font-size: 13px;
+                    padding: 9px;
+                }
+            }
         </style>
     </head>
     <body>
+
+    <div class="bg-lines-wrapper">
+        <div class="bg-line-1"></div>
+        <div class="bg-line-2"></div>
+    </div>
 
     <div class="container">
         <div class="header-block">
@@ -287,9 +336,9 @@ async def main_page():
         
         <form id="upload-form">
             <div class="drop-zone" id="drop-zone">
-                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-                <div style="font-weight:600; color: var(--primary-black);">Выберите файлы или перетащите их сюда</div>
-                <div style="font-size:12px; color:#94a3b8; margin-top:4px;">Доступно для любых вузовских PDF документов</div>
+                <svg width="35" height="35" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                <div class="drop-zone-text">Выберите файлы или перетащите их</div>
+                <div style="font-size:11px; color:#94a3b8; margin-top:4px; text-align:center;">Поддерживаются любые PDF документы</div>
             </div>
             
             <input type="file" id="file-input" multiple accept=".pdf" style="display: none;">
@@ -390,25 +439,3 @@ async def main_page():
     </body>
     </html>
     """
-
-@app.post("/api/rename")
-async def rename_files(
-    files: List[UploadFile] = File(...),
-    template: str = Form("{тип}_{код}_{название}_{год}")
-):
-    zip_buffer = BytesIO()
-    
-    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-        for file in files:
-            file_bytes = await file.read()
-            info = extract_pdf_info(file_bytes)
-            new_name = apply_template(template, info) + ".pdf"
-            zip_file.writestr(new_name, file_bytes)
-            
-    zip_buffer.seek(0)
-    
-    return StreamingResponse(
-        zip_buffer,
-        media_type="application/zip",
-        headers={"Content-Disposition": "attachment; filename=renamed_files.zip"}
-    )
