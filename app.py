@@ -73,6 +73,27 @@ async def get_logo():
         return FileResponse("logo.png")
     return HTTPException(status_code=404, detail="Logo not found")
 
+# --- ВОТ ЭТОТ ЭНДПОИНТ ПРОПАЛ ИЗ Python-ЛОГИКИ ---
+@app.post("/api/rename")
+async def rename_pdfs(files: List[UploadFile] = File(...), template: str = Form(...)):
+    if not files:
+        raise HTTPException(status_code=400, detail="Файлы не загружены")
+    
+    zip_buffer = BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        for file in files:
+            file_bytes = await file.read()
+            info = extract_pdf_info(file_bytes)
+            new_name = apply_template(template, info) + ".pdf"
+            zip_file.writestr(new_name, file_bytes)
+            
+    zip_buffer.seek(0)
+    return StreamingResponse(
+        zip_buffer, 
+        media_type="application/zip", 
+        headers={"Content-Disposition": "attachment; filename=archive.zip"}
+    )
+
 @app.get("/", response_class=HTMLResponse)
 async def main_page():
     return """
@@ -98,7 +119,6 @@ async def main_page():
 
             body {
                 font-family: '-apple-system', BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                /* Жидкий глубокий фон в цветах кафедры, подсвечивающий стекло */
                 background: radial-gradient(circle at 15% 15%, rgba(0, 132, 255, 0.25) 0%, transparent 35%),
                             radial-gradient(circle at 85% 85%, rgba(0, 132, 255, 0.15) 0%, transparent 45%),
                             linear-gradient(135deg, #eef2f7 0%, #dcdfe4 100%);
@@ -113,7 +133,6 @@ async def main_page():
                 position: relative;
             }
 
-            /* Фирменные косые полосы, запрятанные «вглубь» за стекло */
             .bg-lines-wrapper {
                 position: absolute;
                 top: 0;
@@ -148,16 +167,13 @@ async def main_page():
             }
 
             .container {
-                /* Эффект Liquid Glass */
                 background: var(--glass-bg);
                 backdrop-filter: blur(30px) saturate(190%);
                 -webkit-backdrop-filter: blur(30px) saturate(190%);
                 
-                /* Тонкий глянцевый край стеклянной панели */
                 border: 1px solid var(--glass-border);
                 border-radius: 24px;
                 
-                /* Сложные тени: внутренний сильный блик сверху + объемная мягкая тень */
                 box-shadow: 
                     inset 0 1.5px 1.5px rgba(255, 255, 255, 0.7),
                     inset 0 12px 24px rgba(255, 255, 255, 0.25),
@@ -184,7 +200,6 @@ async def main_page():
                 height: 52px;
                 width: auto;
                 object-fit: contain;
-                /* Небольшой эффект отражения на логотипе */
                 filter: drop-shadow(0 2px 4px rgba(0,0,0,0.05));
             }
             .title-group {
