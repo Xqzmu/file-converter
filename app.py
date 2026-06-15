@@ -107,8 +107,9 @@ async def main_page():
             :root {
                 --primary-blue: #0084ff;
                 --primary-black: #0d0d0e;
-                --glass-bg: rgba(255, 255, 255, 0.45);
-                --glass-border: rgba(255, 255, 255, 0.4);
+                /* Смягчаем цвет подложки стекла, делая его более люксовым */
+                --glass-bg: rgba(255, 255, 255, 0.55);
+                --glass-border: rgba(255, 255, 255, 0.5);
             }
 
             html, body {
@@ -119,9 +120,10 @@ async def main_page():
 
             body {
                 font-family: '-apple-system', BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                background: radial-gradient(circle at 15% 15%, rgba(0, 132, 255, 0.25) 0%, transparent 35%),
-                            radial-gradient(circle at 85% 85%, rgba(0, 132, 255, 0.15) 0%, transparent 45%),
-                            linear-gradient(135deg, #eef2f7 0%, #dcdfe4 100%);
+                /* Делаем градиент фона чуть насыщеннее, чтобы стекло «заиграло» как на скриншоте */
+                background: radial-gradient(circle at 20% 20%, rgba(0, 132, 255, 0.3) 0%, transparent 40%),
+                            radial-gradient(circle at 80% 80%, rgba(0, 132, 255, 0.2) 0%, transparent 50%),
+                            linear-gradient(135deg, #eef2f7 0%, #d5dadf 100%);
                 background-attachment: fixed;
                 display: flex;
                 justify-content: center;
@@ -148,45 +150,62 @@ async def main_page():
                 top: -10%;
                 left: -10%;
                 width: 140%;
-                height: 60px;
+                height: 70px;
                 background: linear-gradient(90deg, transparent, var(--primary-blue), transparent);
                 transform: rotate(-12deg);
-                opacity: 0.12;
-                filter: blur(4px);
+                opacity: 0.15;
+                filter: blur(6px);
             }
             .bg-line-2 {
                 position: absolute;
-                top: 45%;
+                top: 50%;
                 right: -20%;
                 width: 140%;
-                height: 25px;
+                height: 35px;
                 background: linear-gradient(90deg, transparent, var(--primary-black), transparent);
                 transform: rotate(-12deg);
-                opacity: 0.08;
-                filter: blur(2px);
+                opacity: 0.1;
+                filter: blur(4px);
             }
 
             .container {
                 background: var(--glass-bg);
-                backdrop-filter: blur(30px) saturate(190%);
-                -webkit-backdrop-filter: blur(30px) saturate(190%);
+                /* Увеличиваем размытие до 40px для глубокого эффекта матовости, как на скрине */
+                backdrop-filter: blur(40px) saturate(200%);
+                -webkit-backdrop-filter: blur(40px) saturate(200%);
                 
+                /* Тонкая, едва заметная глянцевая грань */
                 border: 1px solid var(--glass-border);
-                border-radius: 24px;
+                /* Делаем скругление еще более мягким и жидким */
+                border-radius: 32px;
                 
+                /* Перерабатываем тени: 
+                   1. Внутренний белый блик по всему периметру (inset 0 0 0 1px)
+                   2. Мягкое внутреннее свечение сверху вниз для объема
+                   3. Глубокая, очень мягкая и размытая внешняя тень */
                 box-shadow: 
-                    inset 0 1.5px 1.5px rgba(255, 255, 255, 0.7),
-                    inset 0 12px 24px rgba(255, 255, 255, 0.25),
-                    0 4px 10px rgba(0, 0, 0, 0.02),
-                    0 20px 50px rgba(0, 84, 160, 0.12);
+                    inset 0 0 0 1px rgba(255, 255, 255, 0.6),
+                    inset 0 15px 30px rgba(255, 255, 255, 0.3),
+                    0 1px 3px rgba(0, 0, 0, 0.02),
+                    0 10px 30px rgba(0, 0, 0, 0.04),
+                    0 30px 60px rgba(0, 50, 100, 0.08);
 
-                padding: 40px 30px;
+                padding: 45px 35px;
                 width: 100%;
-                max-width: 520px;
+                max-width: 500px;
                 box-sizing: border-box;
                 position: relative;
                 z-index: 1;
-                transition: transform 0.3s ease;
+                transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            }
+            
+            /* Эффект легкого отклика при наведении (как у кнопок на панели iOS) */
+            .container:hover {
+                transform: translateY(-2px);
+                box-shadow: 
+                    inset 0 0 0 1px rgba(255, 255, 255, 0.7),
+                    inset 0 15px 30px rgba(255, 255, 255, 0.35),
+                    0 35px 70px rgba(0, 50, 100, 0.12);
             }
             
             .header-block {
@@ -194,7 +213,7 @@ async def main_page():
                 align-items: center;
                 justify-content: center;
                 gap: 16px;
-                margin-bottom: 30px;
+                margin-bottom: 35px;
             }
             .header-block img {
                 height: 52px;
@@ -222,28 +241,31 @@ async def main_page():
                 font-weight: 700;
             }
             
+            /* Делаем внутреннюю зону сброса файлов тоже стеклянной, но чуть глубже */
             .drop-zone {
-                border: 1.5px dashed rgba(0, 132, 255, 0.4);
-                border-radius: 16px;
-                padding: 35px 20px;
+                border: 1.5px dashed rgba(0, 132, 255, 0.35);
+                border-radius: 20px;
+                padding: 40px 20px;
                 cursor: pointer;
-                background: rgba(255, 255, 255, 0.35);
+                background: rgba(255, 255, 255, 0.25);
+                backdrop-filter: blur(10px);
+                -webkit-backdrop-filter: blur(10px);
                 transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
                 display: flex;
                 flex-direction: column;
                 align-items: center;
-                box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);
+                box-shadow: inset 0 2px 4px rgba(0,0,0,0.01);
             }
             .drop-zone:hover, .drop-zone.dragover {
-                background: rgba(255, 255, 255, 0.6);
+                background: rgba(255, 255, 255, 0.5);
                 border-color: var(--primary-blue);
-                box-shadow: 0 8px 20px rgba(0, 132, 255, 0.08);
+                box-shadow: 0 10px 25px rgba(0, 132, 255, 0.06);
                 transform: translateY(-1px);
             }
             .drop-zone svg {
                 stroke: var(--primary-blue);
                 margin-bottom: 12px;
-                filter: drop-shadow(0 2px 4px rgba(0,132,255,0.2));
+                filter: drop-shadow(0 2px 4px rgba(0,132,255,0.15));
             }
             .drop-zone-text {
                 font-weight: 600; 
@@ -253,10 +275,12 @@ async def main_page():
             
             .template-section {
                 text-align: left;
-                background: rgba(255, 255, 255, 0.3);
-                padding: 20px;
-                border-radius: 16px;
-                border: 1px solid rgba(255, 255, 255, 0.5);
+                background: rgba(255, 255, 255, 0.2);
+                backdrop-filter: blur(10px);
+                -webkit-backdrop-filter: blur(10px);
+                padding: 22px;
+                border-radius: 20px;
+                border: 1px solid rgba(255, 255, 255, 0.4);
                 margin-top: 25px;
                 margin-bottom: 25px;
                 box-sizing: border-box;
@@ -268,79 +292,79 @@ async def main_page():
                 font-weight: 600;
                 padding-left: 2px;
             }
-            label { display: block; font-size: 11px; color: rgba(0,0,0,0.6); margin-bottom: 7px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+            label { display: block; font-size: 11px; color: rgba(0,0,0,0.6); margin-bottom: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
             
             input[type="text"] {
                 width: 100%;
-                padding: 13px;
-                background: rgba(255, 255, 255, 0.5);
-                border: 1px solid rgba(255, 255, 255, 0.6);
-                border-radius: 10px;
+                padding: 14px;
+                background: rgba(255, 255, 255, 0.4);
+                border: 1px solid rgba(255, 255, 255, 0.5);
+                border-radius: 12px;
                 box-sizing: border-box;
                 font-family: 'SF Mono', SFMono-Regular, Consolas, monospace;
                 font-size: 14px;
                 font-weight: 600;
                 color: var(--primary-black);
-                box-shadow: inset 0 1px 2px rgba(0,0,0,0.03);
+                box-shadow: inset 0 1px 2px rgba(0,0,0,0.02);
                 transition: all 0.2s;
             }
             input[type="text"]:focus {
                 outline: none;
-                background: rgba(255, 255, 255, 0.8);
+                background: rgba(255, 255, 255, 0.7);
                 border-color: var(--primary-blue);
-                box-shadow: 0 0 0 3px rgba(0, 132, 255, 0.15);
+                box-shadow: 0 0 0 3px rgba(0, 132, 255, 0.12);
             }
             
             .tags-info { font-size: 11.5px; color: rgba(0,0,0,0.6); margin-top: 12px; line-height: 1.5; }
-            .tags-list { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 5px; }
+            .tags-list { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
             .tags-list code { 
-                background: rgba(0, 132, 255, 0.1); 
+                background: rgba(0, 132, 255, 0.08); 
                 color: #0066dd;
-                padding: 3px 6px; 
-                border-radius: 6px; 
+                padding: 4px 8px; 
+                border-radius: 8px; 
                 font-size: 11px; 
                 font-weight: 600;
             }
             
             button {
-                background: linear-gradient(180deg, #242426 0%, #0d0d0e 100%);
+                background: linear-gradient(180deg, #2c2c2e 0%, #0f0f10 100%);
                 color: white;
-                border: 1px solid rgba(0,0,0,0.1);
+                border: 1px solid rgba(0,0,0,0.2);
                 padding: 16px 24px;
                 font-size: 15px;
                 font-weight: 600;
-                border-radius: 12px;
+                border-radius: 14px;
                 cursor: pointer;
                 width: 100%;
                 transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+                box-shadow: 0 4px 15px rgba(0, 0, 0, 0.12);
             }
             button:hover:not(:disabled) { 
-                background: linear-gradient(180deg, #1a1a1c 0%, #000000 100%);
-                box-shadow: 0 6px 20px rgba(0, 132, 255, 0.25);
+                background: linear-gradient(180deg, #1e1e20 0%, #000000 100%);
+                box-shadow: 0 8px 25px rgba(0, 132, 255, 0.2);
                 transform: translateY(-0.5px);
             }
             button:disabled { 
-                background: rgba(0, 0, 0, 0.08); 
-                color: rgba(0, 0, 0, 0.3); 
+                background: rgba(0, 0, 0, 0.05); 
+                color: rgba(0, 0, 0, 0.25); 
                 border: none;
                 cursor: not-allowed; 
                 box-shadow: none; 
             }
             
             #file-list { text-align: left; max-height: 110px; overflow-y: auto; margin-top: 15px; font-size: 12.5px; }
-            .file-item { padding: 6px 10px; background: rgba(255, 255, 255, 0.5); border-left: 3px solid var(--primary-blue); border-radius: 0 6px 6px 0; margin-bottom: 4px; color: var(--primary-black); font-weight: 500; }
+            .file-item { padding: 6px 10px; background: rgba(255, 255, 255, 0.4); border-left: 3px solid var(--primary-blue); border-radius: 0 6px 6px 0; margin-bottom: 4px; color: var(--primary-black); font-weight: 500; }
 
             @media (max-width: 480px) {
                 body { padding: 10px; }
-                .container { padding: 30px 18px; border-radius: 20px; }
+                .container { padding: 35px 20px; border-radius: 26px; }
                 .header-block { flex-direction: column; gap: 8px; text-align: center; margin-bottom: 25px; }
                 .header-block img { height: 46px; }
                 .title-group { text-align: center; }
                 h1 { font-size: 20px; }
-                .drop-zone { padding: 25px 15px; }
+                .drop-zone { padding: 30px 15px; }
                 .drop-zone-text { font-size: 13.5px; }
-                .template-section { padding: 15px; border-radius: 12px; }
+                .template-section { padding: 18px; border-radius: 16px; }
             }
         </style>
     </head>
