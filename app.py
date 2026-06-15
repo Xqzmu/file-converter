@@ -107,7 +107,6 @@ async def main_page():
             :root {
                 --primary-blue: #0084ff;
                 --primary-black: #0d0d0e;
-                /* Смягчаем цвет подложки стекла, делая его более люксовым */
                 --glass-bg: rgba(255, 255, 255, 0.55);
                 --glass-border: rgba(255, 255, 255, 0.5);
             }
@@ -120,17 +119,20 @@ async def main_page():
 
             body {
                 font-family: '-apple-system', BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                /* Делаем градиент фона чуть насыщеннее, чтобы стекло «заиграло» как на скриншоте */
                 background: radial-gradient(circle at 20% 20%, rgba(0, 132, 255, 0.3) 0%, transparent 40%),
                             radial-gradient(circle at 80% 80%, rgba(0, 132, 255, 0.2) 0%, transparent 50%),
                             linear-gradient(135deg, #eef2f7 0%, #d5dadf 100%);
                 background-attachment: fixed;
+                
+                /* Включаем вертикальный стек для активации плавного скролла */
                 display: flex;
-                justify-content: center;
+                flex-direction: column;
                 align-items: center;
+                justify-content: flex-start;
+                
                 min-height: 100vh;
                 margin: 0;
-                padding: 15px;
+                padding: 40px 15px 60px 15px; /* Нижний отступ дает мягкую зону при прокрутке */
                 box-sizing: border-box;
                 position: relative;
             }
@@ -168,21 +170,13 @@ async def main_page():
                 filter: blur(4px);
             }
 
+            /* Главный контейнер конвертера */
             .container {
                 background: var(--glass-bg);
-                /* Увеличиваем размытие до 40px для глубокого эффекта матовости, как на скрине */
                 backdrop-filter: blur(40px) saturate(200%);
                 -webkit-backdrop-filter: blur(40px) saturate(200%);
-                
-                /* Тонкая, едва заметная глянцевая грань */
                 border: 1px solid var(--glass-border);
-                /* Делаем скругление еще более мягким и жидким */
                 border-radius: 32px;
-                
-                /* Перерабатываем тени: 
-                   1. Внутренний белый блик по всему периметру (inset 0 0 0 1px)
-                   2. Мягкое внутреннее свечение сверху вниз для объема
-                   3. Глубокая, очень мягкая и размытая внешняя тень */
                 box-shadow: 
                     inset 0 0 0 1px rgba(255, 255, 255, 0.6),
                     inset 0 15px 30px rgba(255, 255, 255, 0.3),
@@ -198,8 +192,6 @@ async def main_page():
                 z-index: 1;
                 transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
             }
-            
-            /* Эффект легкого отклика при наведении (как у кнопок на панели iOS) */
             .container:hover {
                 transform: translateY(-2px);
                 box-shadow: 
@@ -241,7 +233,6 @@ async def main_page():
                 font-weight: 700;
             }
             
-            /* Делаем внутреннюю зону сброса файлов тоже стеклянной, но чуть глубже */
             .drop-zone {
                 border: 1.5px dashed rgba(0, 132, 255, 0.35);
                 border-radius: 20px;
@@ -355,9 +346,88 @@ async def main_page():
             #file-list { text-align: left; max-height: 110px; overflow-y: auto; margin-top: 15px; font-size: 12.5px; }
             .file-item { padding: 6px 10px; background: rgba(255, 255, 255, 0.4); border-left: 3px solid var(--primary-blue); border-radius: 0 6px 6px 0; margin-bottom: 4px; color: var(--primary-black); font-weight: 500; }
 
+            /* --- СТИЛИ ДЛЯ ИНСТРУКЦИИ И ФУТЕРА --- */
+            .instruction-card {
+                background: rgba(255, 255, 255, 0.35);
+                backdrop-filter: blur(25px) saturate(160%);
+                -webkit-backdrop-filter: blur(25px) saturate(160%);
+                border: 1px solid rgba(255, 255, 255, 0.4);
+                border-radius: 24px;
+                padding: 25px 30px;
+                width: 100%;
+                max-width: 500px;
+                box-sizing: border-box;
+                margin-top: 25px;
+                box-shadow: 
+                    inset 0 0 0 1px rgba(255, 255, 255, 0.4),
+                    0 15px 35px rgba(0, 40, 80, 0.04);
+                text-align: left;
+                z-index: 1;
+                transition: all 0.3s ease;
+            }
+            .instruction-card:hover {
+                background: rgba(255, 255, 255, 0.45);
+            }
+            .instruction-card h4 {
+                margin: 0 0 15px 0;
+                color: var(--primary-black);
+                font-size: 14px;
+                font-weight: 700;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+            .instruction-step {
+                font-size: 13px;
+                color: rgba(13, 13, 14, 0.7);
+                margin-bottom: 10px;
+                line-height: 1.4;
+            }
+            .instruction-step strong {
+                color: #0066dd;
+            }
+            .instruction-grid {
+                margin-top: 15px;
+                padding-top: 15px;
+                border-top: 1px solid rgba(0,0,0,0.06);
+                font-size: 12px;
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+            }
+            .instruction-grid div {
+                color: rgba(13, 13, 14, 0.6);
+            }
+            .instruction-grid code {
+                display: block;
+                background: rgba(255, 255, 255, 0.5);
+                border: 1px solid rgba(255,255,255,0.4);
+                padding: 8px 12px;
+                border-radius: 8px;
+                margin-top: 4px;
+                font-family: 'SF Mono', monospace;
+                color: var(--primary-black);
+                font-size: 11.5px;
+                word-break: break-all;
+            }
+
+            .page-footer {
+                text-align: center;
+                margin-top: 40px;
+                font-size: 12px;
+                color: rgba(13, 13, 14, 0.45);
+                line-height: 1.6;
+                z-index: 1;
+                font-weight: 500;
+            }
+            .page-footer p {
+                margin: 4px 0;
+            }
+
             @media (max-width: 480px) {
-                body { padding: 10px; }
+                body { padding: 30px 10px 40px 10px; }
                 .container { padding: 35px 20px; border-radius: 26px; }
+                .instruction-card { padding: 20px; border-radius: 20px; }
                 .header-block { flex-direction: column; gap: 8px; text-align: center; margin-bottom: 25px; }
                 .header-block img { height: 46px; }
                 .title-group { text-align: center; }
@@ -413,6 +483,33 @@ async def main_page():
             
             <button type="submit" id="submit-btn" disabled>Обработать документы (ZIP)</button>
         </form>
+    </div> <div class="instruction-card">
+        <h4>💡 Памятка по разбору документов</h4>
+        <div class="instruction-step">
+            <strong>{тип}</strong> — автоматически определяет категорию: <code>РПД</code>, <code>Практика</code>, <code>ФОС</code> или <code>Аннотация</code>.
+        </div>
+        <div class="instruction-step">
+            <strong>{код}</strong> — извлекает шифр направления подготовки (например, <code>09.03.04</code>).
+        </div>
+        <div class="instruction-step">
+            <strong>{вид}</strong> — тип практики (<code>Учебная</code>, <code>Производственная</code>, <code>Преддипломная</code>, <code>НИР</code>).
+        </div>
+        
+        <div class="instruction-grid">
+            <div>
+                <span>Исходный файл:</span>
+                <code>rabochaya-programma-discipliny-2026-draft.pdf</code>
+            </div>
+            <div>
+                <span>Результат по умолчанию:</span>
+                <code>РПД_00.00.00_Без_названия_2026.pdf</code>
+            </div>
+        </div>
+    </div>
+
+    <div class="page-footer">
+        <p>© 2026 Кафедра ИиППО. Все права защищены.</p>
+        <p>Разработано в рамках внутренней автоматизации учебного процесса и документооборота кафедры.</p>
     </div>
 
     <script>
