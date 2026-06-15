@@ -1,270 +1,315 @@
 import os
 import re
-import shutil
 import zipfile
-from pathlib import Path
+from io import BytesIO
 from typing import List
-from fastapi import FastAPI, UploadFile, File, Form
-from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi.responses import HTMLResponse, StreamingResponse
+import pypdf
 
-app = FastAPI(title="MIREA File Renamer")
+app = FastAPI()
 
-# Разрешаем CORS на случай интеграций
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+def extract_pdf_info(file_bytes: bytes):
+    """Вытаскивает ключевые данные из первых страниц PDF."""
+    text = ""
+    try:
+        reader = pypdf.PdfReader(BytesIO(file_bytes))
+        # Читаем первые 3 страницы для надежности
+        for i in range(min(3, len(reader.pages))):
+            page_text = reader.pages[i].extract_text()
+            if page_text:
+                text += page_text + "\n"
+    except Exception:
+        pass
 
-TRANSLIT_DICT = {
-    'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo',
-    'ж': 'zh', 'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm',
-    'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u',
-    'ф': 'f', 'х': 'kh', 'ц': 'ts', 'ч': 'ch', 'ш': 'sh', 'щ': 'shch',
-    'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya',
-    'А': 'A', 'Б': 'B', 'В': 'V', 'Г': 'G', 'Д': 'D', 'Е': 'E', 'Ё': 'Yo',
-    'Ж': 'Zh', 'З': 'Z', 'И': 'I', 'Й': 'Y', 'К': 'K', 'Л': 'L', 'М': 'M',
-    'Н': 'N', 'О': 'O', 'П': 'P', 'Р': 'R', 'С': 'S', 'Т': 'T', 'У': 'U',
-    'Ф': 'F', 'Х': 'Kh', 'Ц': 'Ts', 'Ч': 'Ch', 'Ш': 'Sh', 'Щ': 'Shch',
-    'Ъ': '', 'Ы': 'Y', 'Ь': '', 'Э': 'E', 'Ю': 'Yu', 'Я': 'Ya'
-}
+    # 1. Ищем код направления (например, 09.03.04 или 09.04.01)
+    code_match = re.search(r'\b\d{2}\.\d{2}\.\d{2}\b', text)
+    code = code_match.group(0) if code_match else "00.00.00"
 
-def transliterate(text: str) -> str:
-    text = text.replace(' ', '_')
-    res = "".join(TRANSLIT_DICT.get(char, char) for char in text)
-    res = re.sub(r'[^A-Za-z0-9_]', '', res)
-    return re.sub(r'_+', '_', res).strip('_')
+    # 2. Ищем год (4 цифры, обычно внизу или в шапке)
+    year_match = re.search(r'\b(202[0-9]|201[0-9])\b', text)
+    year = year_match.group(0) if year_match else "2026"
 
-# Главная страница с красивым интерфейсом Drag-and-Drop
+    # 3. Определяем тип документа и вид практики
+    doc_type = "РПД"
+    practice_type = "Учебная"
+    
+    if "практик" in text.lower() or "производствен" in text.lower() or "учебн" in text.lower():
+        doc_type = "Практика"
+        if "преддиплом" in text.lower():
+            practice_type = "Преддипломная"
+        elif "производствен" in text.lower():
+            practice_type = "Производственная"
+        elif "научно-исслед" in text.lower() or "нир" in text.lower():
+            practice_type = "НИР"
+
+    # 4. Пробуем вытащить название дисциплины (ищем строки после слов Дисциплина/Блок/РПД по)
+    title = "Неизвестная_дисциплина"
+    title_match = re.search(r'(?:дисциплины|дисциплине|по|название)\s+["«]?([А-Яа-яA-Za-z\s\-,]{3,50})["»]?', text, re.IGNORECASE)
+    if title_match:
+        title = title_match.group(1).strip().replace(" ", "_")
+    
+    return {
+        "тип": doc_type,
+        "код": code,
+        "год": year,
+        "вид": practice_type,
+        "название": title
+    }
+
+def apply_template(template: str, info: dict) -> str:
+    """Заменяет теги {переменная} в шаблоне на реальные данные."""
+    result = template
+    for key, value in info.items():
+        result = result.replace(f"{{{key}}}", str(value))
+    # Удаляем запрещенные в именах файлов символы
+    result = re.sub(r'[\\/*?:"<>|]', "", result)
+    return result.strip()
+
 @app.get("/", response_class=HTMLResponse)
-async def get_index():
-    html_content = """
+async def main_page():
+    return """
     <!DOCTYPE html>
     <html lang="ru">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Конвертер файлов МИРЭА</title>
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+        <title>Конвертер названий РПД и практик</title>
         <style>
-            * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
-            body { background: #f4f6f9; display: flex; justify-content: center; align-items: center; min-height: 100vh; color: #333; }
-            .container { background: #ffffff; padding: 40px; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); width: 100%; max-width: 600px; text-align: center; }
-            h1 { font-size: 24px; font-weight: 700; margin-bottom: 8px; color: #1e293b; }
-            p.subtitle { color: #64748b; font-size: 14px; margin-bottom: 30px; }
+            body {
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                background-color: #f4f6f9;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                min-height: 100vh;
+                margin: 0;
+                padding: 20px;
+                box-sizing: border-box;
+            }
+            .container {
+                background: white;
+                padding: 40px;
+                border-radius: 12px;
+                box-shadow: 0 8px 24px rgba(0,0,0,0.05);
+                width: 100%;
+                max-width: 600px;
+                text-align: center;
+            }
+            h1 { color: #2c3e50; margin-bottom: 10px; font-size: 24px; }
+            p { color: #7f8c8d; margin-bottom: 30px; font-size: 14px; }
             
-            .drop-zone { border: 2px dashed #cbd5e1; border-radius: 12px; padding: 40px 20px; cursor: pointer; transition: all 0.3s ease; background: #f8fafc; position: relative; }
-            .drop-zone:hover, .drop-zone.dragover { border-color: #3b82f6; background: #eff6ff; }
-            .drop-zone svg { width: 48px; height: 48px; color: #94a3b8; margin-bottom: 16px; transition: color 0.3s; }
-            .drop-zone:hover svg, .drop-zone.dragover svg { color: #3b82f6; }
-            .drop-zone p { font-size: 15px; font-weight: 500; color: #475569; }
-            .drop-zone span { font-size: 13px; color: #94a3b8; display: block; margin-top: 6px; }
+            .drop-zone {
+                border: 2px dashed #3498db;
+                border-radius: 8px;
+                padding: 40px 20px;
+                cursor: pointer;
+                background-color: #fcfdfe;
+                transition: all 0.3s ease;
+                margin-bottom: 25px;
+            }
+            .drop-zone:hover, .drop-zone.dragover {
+                background-color: #ebf5fb;
+                border-color: #2980b9;
+            }
+            .drop-zone img { width: 50px; opacity: 0.6; margin-bottom: 15px; }
             
-            #file-input { display: none; }
+            .template-section {
+                text-align: left;
+                background: #f8fafc;
+                padding: 20px;
+                border-radius: 8px;
+                border: 1px solid #e2e8f0;
+                margin-bottom: 25px;
+            }
+            .template-section h3 { margin-top: 0; color: #334155; font-size: 16px; }
+            .template-group { margin-bottom: 15px; }
+            .template-group:last-child { margin-bottom: 0; }
+            label { display: block; font-size: 13px; color: #64748b; margin-bottom: 5px; font-weight: 600; }
+            input[type="text"] {
+                width: 100%;
+                padding: 10px;
+                border: 1px solid #cbd5e1;
+                border-radius: 6px;
+                box-sizing: border-box;
+                font-family: monospace;
+                font-size: 14px;
+            }
+            .tags-info { font-size: 11px; color: #94a3b8; margin-top: 5px; }
             
-            .file-list { margin-top: 24px; text-align: left; max-height: 180px; overflow-y: auto; display: none; }
-            .file-item { background: #f1f5f9; padding: 10px 14px; border-radius: 8px; font-size: 13px; color: #334155; display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-            .file-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 85%; }
+            button {
+                background-color: #2ecc71;
+                color: white;
+                border: none;
+                padding: 14px 28px;
+                font-size: 16px;
+                font-weight: bold;
+                border-radius: 6px;
+                cursor: pointer;
+                width: 100%;
+                transition: background 0.2s;
+            }
+            button:hover { background-color: #27ae60; }
+            button:disabled { background-color: #bdc3c7; cursor: not-allowed; }
             
-            .btn { display: inline-block; width: 100%; background: #3b82f6; color: white; padding: 14px; border: none; border-radius: 12px; font-size: 16px; font-weight: 600; margin-top: 24px; cursor: pointer; transition: background 0.3s; display: none; }
-            .btn:hover { background: #2563eb; }
-            .btn:disabled { background: #94a3b8; cursor: not-allowed; }
-            
-            .loader { display: none; margin: 20px auto 0; border: 4px solid #f3f3f3; border-top: 4px solid #3b82f6; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; }
-            @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+            #file-list { text-align: left; max-height: 150px; overflow-y: auto; margin-bottom: 20px; font-size: 13px; color: #2c3e50; }
+            .file-item { padding: 4px 8px; background: #f1f5f9; border-radius: 4px; margin-bottom: 4px; }
         </style>
     </head>
     <body>
-        <div class="container">
-            <h1>Конвертер названий РПД и практик</h1>
-            <p class="subtitle">Перетащите файлы .pdf для автоматического переименования</p>
-            
+
+    <div class="container">
+        <h1>Конвертер названий РПД и практик</h1>
+        <p>Перетащите файлы .pdf для автоматического переименования</p>
+        
+        <form id="upload-form">
             <div class="drop-zone" id="drop-zone">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                </svg>
-                <p>Выберите файлы или перетащите их сюда</p>
-                <span>Поддерживаются только документы .pdf</span>
-                <input type="file" id="file-input" multiple accept=".pdf">
+                <svg width="50" height="50" viewBox="0 0 24 24" fill="none" stroke="#3498db" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:10px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                <div style="font-weight:500; color:#34495e;">Выберите файлы или перетащите их сюда</div>
+                <div style="font-size:12px; color:#bdc3c7; margin-top:5px;">Поддерживаются только документы .pdf</div>
             </div>
             
-            <div class="file-list" id="file-list"></div>
-            <div class="loader" id="loader"></div>
-            <button class="btn" id="upload-btn">Переименовать и скачать архив</button>
-        </div>
+            <input type="file" id="file-input" multiple accept=".pdf" style="display: none;">
+            
+            <div id="file-list"></div>
 
-        <script>
-            const dropZone = document.getElementById('drop-zone');
-            const fileInput = document.getElementById('file-input');
-            const fileList = document.getElementById('file-list');
-            const uploadBtn = document.getElementById('upload-btn');
-            const loader = document.getElementById('loader');
-            let selectedFiles = [];
+            <div class="template-section">
+                <h3>Настройка шаблонов имен</h3>
+                <div class="template-group">
+                    <label for="template-rpd">Шаблон для РПД:</label>
+                    <input type="text" id="template-rpd" name="template_rpd" value="{тип}_{код}_{название}_{год}">
+                </div>
+                <div class="template-group">
+                    <label for="template-prakt">Шаблон для Практик:</label>
+                    <input type="text" id="template-prakt" name="template_prakt" value="Практика_{вид}_{код}_{год}">
+                </div>
+                <div class="tags-info">
+                    Доступные теги: <code>{тип}</code>, <code>{код}</code>, <code>{название}</code>, <code>{вид}</code>, <code>{год}</code>
+                </div>
+            </div>
+            
+            <button type="submit" id="submit-btn" disabled>Переименовать и скачать ZIP</button>
+        </form>
+    </div>
 
-            dropZone.addEventListener('click', () => fileInput.click());
+    <script>
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const fileList = document.getElementById('file-list');
+        const submitBtn = document.getElementById('submit-btn');
+        const form = document.getElementById('upload-form');
+        let selectedFiles = [];
 
-            dropZone.addEventListener('dragover', (e) => {
-                e.preventDefault();
-                dropZone.classList.add('dragover');
-            });
+        dropZone.addEventListener('click', () => fileInput.click());
 
-            dropZone.addEventListener('dragleave', () => {
-                dropZone.classList.remove('dragover');
-            });
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
 
-            dropZone.addEventListener('drop', (e) => {
-                e.preventDefault();
-                dropZone.classList.remove('dragover');
-                handleFiles(e.dataTransfer.files);
-            });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
 
-            fileInput.addEventListener('change', () => {
-                handleFiles(fileInput.files);
-            });
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            handleFiles(e.dataTransfer.files);
+        });
 
-            function handleFiles(files) {
-                const filtered = Array.from(files).filter(file => file.name.endsWith('.pdf'));
-                if (filtered.length === 0) return;
-                
-                selectedFiles = [...selectedFiles, ...filtered];
+        fileInput.addEventListener('change', (e) => {
+            handleFiles(e.target.files);
+        });
+
+        function handleFiles(files) {
+            const pdfFiles = Array.from(files).filter(file => file.name.toLowerCase().endsWith('.pdf'));
+            if(pdfFiles.length > 0) {
+                selectedFiles = [...selectedFiles, ...pdfFiles];
                 updateInterface();
             }
+        }
 
-            function updateInterface() {
-                fileList.innerHTML = '';
-                if (selectedFiles.length > 0) {
-                    fileList.style.display = 'block';
-                    uploadBtn.style.style = 'block';
-                    uploadBtn.style.display = 'inline-block';
-                    
-                    selectedFiles.forEach((file, index) => {
-                        const item = document.createElement('div');
-                        item.className = 'file-item';
-                        item.innerHTML = `<span>📄 ${file.name}</span><b style="color:#ef4444; cursor:pointer;" onclick="removeFile(${index})">✕</b>`;
-                        fileList.appendChild(item);
-                    });
-                } else {
-                    fileList.style.display = 'none';
-                    uploadBtn.style.display = 'none';
-                }
-            }
+        function updateInterface() {
+            fileList.innerHTML = '';
+            selectedFiles.forEach((file, index) => {
+                const item = document.createElement('div');
+                item.className = 'file-item';
+                item.textContent = `${index + 1}. ${file.name}`;
+                fileList.appendChild(item);
+            });
+            submitBtn.disabled = selectedFiles.length === 0;
+        }
 
-            window.removeFile = function(index) {
-                selectedFiles.splice(index, 1);
-                updateInterface();
-            }
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (selectedFiles.length === 0) return;
 
-            uploadBtn.addEventListener('click', async () => {
-                if (selectedFiles.length === 0) return;
-                
-                uploadBtn.disabled = true;
-                loader.style.display = 'block';
-                
-                const formData = new FormData();
-                selectedFiles.forEach(file => {
-                    formData.append('files', file);
+            const formData = new FormData();
+            selectedFiles.forEach(file => formData.append('files', file));
+            formData.append('template_rpd', document.getElementById('template-rpd').value);
+            formData.append('template_prakt', document.getElementById('template-prakt').value);
+
+            submitBtn.textContent = 'Обработка...';
+            submitBtn.disabled = true;
+
+            try {
+                const response = await fetch('/api/rename', {
+                    method: 'POST',
+                    body: formData
                 });
+
+                if (!response.ok) throw new Error('Ошибка при обработке файлов');
+
+                const blob = await response.blob();
+                const downloadUrl = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = downloadUrl;
+                a.download = "Переименованные_документы.zip";
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
                 
-                try {
-                    const response = await fetch('/rename-batch', {
-                        method: 'POST',
-                        body: formData
-                    });
-                    
-                    if (response.ok) {
-                        // Скачиваем полученный ZIP архив
-                        const blob = await response.blob();
-                        const url = window.URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = "converted_files.zip";
-                        document.body.appendChild(a);
-                        a.click();
-                        a.remove();
-                        
-                        // Сброс интерфейса
-                        selectedFiles = [];
-                        updateInterface();
-                    } else {
-                        alert('Произошла ошибка при обработке файлов.');
-                    }
-                } catch (error) {
-                    console.error(error);
-                    alert('Не удалось связаться с сервером.');
-                } finally {
-                    uploadBtn.disabled = false;
-                    loader.style.display = 'none';
-                }
-            });
-        </script>
+                // Сброс формы после успеха
+                selectedFiles = [];
+                updateInterface();
+            } catch (err) {
+                alert(err.message);
+            } finally {
+                submitBtn.textContent = 'Переименовать и скачать ZIP';
+                submitBtn.disabled = false;
+            }
+        });
+    </script>
     </body>
     </html>
     """
-    return HTMLResponse(content=html_content)
 
-
-# Эндпоинт пакетной обработки файлов
-@app.post("/rename-batch")
-async def rename_batch(files: List[UploadFile] = File(...)):
-    # Шаблон для разбора структуры имени файла
-    pattern = re.compile(r"^(\d{2})[\._](\d{2})[\._](\d{2})_([А-Яа-яA-Za-z0-9]+)_([А-Яа-яA-Za-z0-9]+)_(\d{4})_plx_(.+)$")
+@app.post("/api/rename")
+async def rename_files(
+    files: List[UploadFile] = File(...),
+    template_rpd: str = Form("{тип}_{код}_{название}_{год}"),
+    template_prakt: str = Form("Практика_{вид}_{код}_{год}")
+):
+    zip_buffer = BytesIO()
     
-    # Создаем временные директории
-    temp_dir = Path("temp_processing")
-    temp_dir.mkdir(exist_ok=True)
-    
-    zip_path = Path("converted_files.zip")
-    if zip_path.exists():
-        zip_path.unlink()
-
-    with zipfile.ZipFile(zip_path, 'w') as zip_file:
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
         for file in files:
-            filename = Path(file.filename).stem.strip()
-            suffix = Path(file.filename).suffix
+            file_bytes = await file.read()
             
-            match = pattern.match(filename)
+            # Извлекаем метаданные из контента PDF
+            info = extract_pdf_info(file_bytes)
             
-            if match:
-                ch1, ch2, ch3, profile_raw, institute_raw, year, subject_raw = match.groups()
-                code = f"{ch1}.{ch2}.{ch3}"
-                
-                # Автоопределение типа по названию дисциплины
-                if "практика" in subject_raw.lower() or "prakt" in filename.lower():
-                    prefix = "prakt"
-                else:
-                    prefix = "rpd"
-                
-                # Транслитерация
-                profile = transliterate(profile_raw)
-                institute = transliterate(institute_raw)
-                subject = transliterate(subject_raw)
-                
-                new_filename = f"{prefix}_{code}_{profile}_{subject}_{institute}_{year}{suffix}"
-            else:
-                # Если имя не по шаблону МИРЭА, просто делаем ему транслит и чистку
-                new_filename = transliterate(filename) + suffix
-
-            # Сохраняем файл временно
-            target_path = temp_dir / new_filename
-            with target_path.open("wb") as buffer:
-                shutil.copyfileobj(file.file, buffer)
+            # Выбираем нужный шаблон в зависимости от типа дока
+            chosen_template = template_prakt if info["тип"] == "Практика" else template_rpd
             
-            # Кладем файл в архив
-            zip_file.write(target_path, arcname=new_filename)
-            # Удаляем временный файл
-            target_path.unlink()
-
-    # Удаляем временную папку
-    if temp_dir.exists():
-        shutil.rmtree(temp_dir)
-        
-    return FileResponse(path=zip_path, filename="converted_files.zip", media_type="application/zip")
-
-
-if __name__ == "__main__":
-    import uvicorn
-    # Запуск локально
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+            # Формируем новое имя
+            new_name = apply_template(chosen_template, info) + ".pdf"
+            
+            # Записываем файл в zip-архив с новым именем
+            zip_file.writestr(new_name, file_bytes)
+            
+    zip_buffer.seek(0)
+    
+    return StreamingResponse(
+        zip_buffer,
+        media_type="application/zip",
+        headers={"Content-Disposition": "attachment; filename=renamed_files.zip"}
+    )
