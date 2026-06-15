@@ -81,30 +81,28 @@ async def main_page():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-        <title>Универсальный PDF Конвертер | Кафедра ИиППО</title>
+        <title>PDF Конвертер | Кафедра ИиППО Liquid Glass</title>
         <style>
             :root {
                 --primary-blue: #0084ff;
-                --primary-black: #1a1a1a;
-                --bg-gray: #f8f9fa;
-                --border-color: #e5e7eb;
+                --primary-black: #0d0d0e;
+                --glass-bg: rgba(255, 255, 255, 0.45);
+                --glass-border: rgba(255, 255, 255, 0.4);
             }
 
             html, body {
                 width: 100%;
                 max-width: 100%;
-                overflow-x: hidden; /* Запрещаем горизонтальный скролл на мобилках */
+                overflow-x: hidden;
             }
 
             body {
-                font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-                background-color: var(--bg-gray);
-                background-image: 
-                    linear-gradient(135deg, rgba(0, 132, 255, 0.04) 25%, transparent 25%),
-                    linear-gradient(225deg, rgba(0, 132, 255, 0.03) 25%, transparent 25%),
-                    linear-gradient(45deg, rgba(26, 26, 26, 0.01) 25%, transparent 25%);
-                background-size: 400px 400px;
-                background-position: 0 0, 200px 0, 200px 200px;
+                font-family: '-apple-system', BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                /* Жидкий глубокий фон в цветах кафедры, подсвечивающий стекло */
+                background: radial-gradient(circle at 15% 15%, rgba(0, 132, 255, 0.25) 0%, transparent 35%),
+                            radial-gradient(circle at 85% 85%, rgba(0, 132, 255, 0.15) 0%, transparent 45%),
+                            linear-gradient(135deg, #eef2f7 0%, #dcdfe4 100%);
+                background-attachment: fixed;
                 display: flex;
                 justify-content: center;
                 align-items: center;
@@ -115,7 +113,7 @@ async def main_page():
                 position: relative;
             }
 
-            /* Контейнер для декоративных полос, чтобы они не ломали ширину экрана */
+            /* Фирменные косые полосы, запрятанные «вглубь» за стекло */
             .bg-lines-wrapper {
                 position: absolute;
                 top: 0;
@@ -128,49 +126,66 @@ async def main_page():
             }
             .bg-line-1 {
                 position: absolute;
-                top: -5%;
+                top: -10%;
                 left: -10%;
                 width: 140%;
-                height: 30px;
+                height: 60px;
                 background: linear-gradient(90deg, transparent, var(--primary-blue), transparent);
-                transform: rotate(-15deg);
-                opacity: 0.15;
+                transform: rotate(-12deg);
+                opacity: 0.12;
+                filter: blur(4px);
             }
             .bg-line-2 {
                 position: absolute;
-                top: 35%;
+                top: 45%;
                 right: -20%;
                 width: 140%;
-                height: 15px;
+                height: 25px;
                 background: linear-gradient(90deg, transparent, var(--primary-black), transparent);
-                transform: rotate(-15deg);
+                transform: rotate(-12deg);
                 opacity: 0.08;
+                filter: blur(2px);
             }
 
             .container {
-                background: white;
-                padding: 35px 25px;
-                border-radius: 16px;
-                box-shadow: 0 15px 35px rgba(0,0,0,0.05);
-                border-top: 6px solid var(--primary-blue);
+                /* Эффект Liquid Glass */
+                background: var(--glass-bg);
+                backdrop-filter: blur(30px) saturate(190%);
+                -webkit-backdrop-filter: blur(30px) saturate(190%);
+                
+                /* Тонкий глянцевый край стеклянной панели */
+                border: 1px solid var(--glass-border);
+                border-radius: 24px;
+                
+                /* Сложные тени: внутренний сильный блик сверху + объемная мягкая тень */
+                box-shadow: 
+                    inset 0 1.5px 1.5px rgba(255, 255, 255, 0.7),
+                    inset 0 12px 24px rgba(255, 255, 255, 0.25),
+                    0 4px 10px rgba(0, 0, 0, 0.02),
+                    0 20px 50px rgba(0, 84, 160, 0.12);
+
+                padding: 40px 30px;
                 width: 100%;
-                max-width: 540px;
+                max-width: 520px;
                 box-sizing: border-box;
                 position: relative;
                 z-index: 1;
+                transition: transform 0.3s ease;
             }
             
             .header-block {
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                gap: 15px;
-                margin-bottom: 25px;
+                gap: 16px;
+                margin-bottom: 30px;
             }
             .header-block img {
-                height: 50px;
+                height: 52px;
                 width: auto;
                 object-fit: contain;
+                /* Небольшой эффект отражения на логотипе */
+                filter: drop-shadow(0 2px 4px rgba(0,0,0,0.05));
             }
             .title-group {
                 text-align: left;
@@ -178,143 +193,139 @@ async def main_page():
             h1 { 
                 color: var(--primary-black); 
                 margin: 0; 
-                font-size: 20px; 
+                font-size: 23px; 
                 font-weight: 700;
                 letter-spacing: -0.5px;
-                line-height: 1.2;
+                line-height: 1.1;
             }
             .subtitle { 
-                color: #6b7280; 
-                margin: 2px 0 0 0; 
+                color: rgba(13, 13, 14, 0.6); 
+                margin: 3px 0 0 0; 
                 font-size: 11px; 
                 text-transform: uppercase;
-                letter-spacing: 1px;
-                font-weight: 600;
+                letter-spacing: 1.5px;
+                font-weight: 700;
             }
             
             .drop-zone {
-                border: 2px dashed #cbd5e1;
-                border-radius: 10px;
-                padding: 30px 15px;
+                border: 1.5px dashed rgba(0, 132, 255, 0.4);
+                border-radius: 16px;
+                padding: 35px 20px;
                 cursor: pointer;
-                background-color: #fff;
-                transition: all 0.2s ease;
-                margin-bottom: 20px;
+                background: rgba(255, 255, 255, 0.35);
+                transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
                 display: flex;
                 flex-direction: column;
                 align-items: center;
+                box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);
             }
             .drop-zone:hover, .drop-zone.dragover {
-                background-color: rgba(0, 132, 255, 0.01);
+                background: rgba(255, 255, 255, 0.6);
                 border-color: var(--primary-blue);
+                box-shadow: 0 8px 20px rgba(0, 132, 255, 0.08);
+                transform: translateY(-1px);
             }
             .drop-zone svg {
                 stroke: var(--primary-blue);
-                margin-bottom: 10px;
+                margin-bottom: 12px;
+                filter: drop-shadow(0 2px 4px rgba(0,132,255,0.2));
             }
             .drop-zone-text {
                 font-weight: 600; 
                 color: var(--primary-black);
-                font-size: 14px;
-                text-align: center;
+                font-size: 14.5px;
             }
             
             .template-section {
                 text-align: left;
-                background: #fafafa;
-                padding: 18px;
-                border-radius: 10px;
-                border: 1px solid var(--border-color);
-                margin-bottom: 20px;
+                background: rgba(255, 255, 255, 0.3);
+                padding: 20px;
+                border-radius: 16px;
+                border: 1px solid rgba(255, 255, 255, 0.5);
+                margin-top: 25px;
+                margin-bottom: 25px;
                 box-sizing: border-box;
             }
             .template-section h3 { 
                 margin-top: 0; 
                 color: var(--primary-black); 
-                font-size: 14px; 
+                font-size: 14.5px; 
                 font-weight: 600;
-                border-left: 3px solid var(--primary-black);
-                padding-left: 8px;
+                padding-left: 2px;
             }
-            label { display: block; font-size: 11px; color: #4b5563; margin-bottom: 6px; font-weight: 600; }
+            label { display: block; font-size: 11px; color: rgba(0,0,0,0.6); margin-bottom: 7px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
             
             input[type="text"] {
                 width: 100%;
-                padding: 11px;
-                border: 1px solid #cbd5e1;
-                border-radius: 6px;
+                padding: 13px;
+                background: rgba(255, 255, 255, 0.5);
+                border: 1px solid rgba(255, 255, 255, 0.6);
+                border-radius: 10px;
                 box-sizing: border-box;
-                font-family: 'Courier New', Courier, monospace;
+                font-family: 'SF Mono', SFMono-Regular, Consolas, monospace;
                 font-size: 14px;
                 font-weight: 600;
                 color: var(--primary-black);
+                box-shadow: inset 0 1px 2px rgba(0,0,0,0.03);
+                transition: all 0.2s;
+            }
+            input[type="text"]:focus {
+                outline: none;
+                background: rgba(255, 255, 255, 0.8);
+                border-color: var(--primary-blue);
+                box-shadow: 0 0 0 3px rgba(0, 132, 255, 0.15);
             }
             
-            .tags-info { font-size: 11px; color: #4b5563; margin-top: 10px; line-height: 1.5; }
-            .tags-list { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; }
+            .tags-info { font-size: 11.5px; color: rgba(0,0,0,0.6); margin-top: 12px; line-height: 1.5; }
+            .tags-list { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 5px; }
             .tags-list code { 
-                background: #e1f0ff; 
-                color: #0066cc;
-                padding: 2px 5px; 
-                border-radius: 4px; 
+                background: rgba(0, 132, 255, 0.1); 
+                color: #0066dd;
+                padding: 3px 6px; 
+                border-radius: 6px; 
                 font-size: 11px; 
                 font-weight: 600;
             }
             
             button {
-                background-color: var(--primary-black);
+                background: linear-gradient(180deg, #242426 0%, #0d0d0e 100%);
                 color: white;
-                border: none;
-                padding: 14px 20px;
-                font-size: 14px;
+                border: 1px solid rgba(0,0,0,0.1);
+                padding: 16px 24px;
+                font-size: 15px;
                 font-weight: 600;
-                border-radius: 6px;
+                border-radius: 12px;
                 cursor: pointer;
                 width: 100%;
-                transition: all 0.2s;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+                transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
             }
-            button:hover { 
-                background-color: var(--primary-blue);
+            button:hover:not(:disabled) { 
+                background: linear-gradient(180deg, #1a1a1c 0%, #000000 100%);
+                box-shadow: 0 6px 20px rgba(0, 132, 255, 0.25);
+                transform: translateY(-0.5px);
             }
-            button:disabled { background-color: #cbd5e1; color: #94a3b8; cursor: not-allowed; box-shadow: none; }
+            button:disabled { 
+                background: rgba(0, 0, 0, 0.08); 
+                color: rgba(0, 0, 0, 0.3); 
+                border: none;
+                cursor: not-allowed; 
+                box-shadow: none; 
+            }
             
-            #file-list { text-align: left; max-height: 100px; overflow-y: auto; margin-bottom: 15px; font-size: 12px; }
-            .file-item { padding: 5px 8px; background: #f1f5f9; border-left: 3px solid var(--primary-blue); border-radius: 0 4px 4px 0; margin-bottom: 4px; color: var(--primary-black); }
+            #file-list { text-align: left; max-height: 110px; overflow-y: auto; margin-top: 15px; font-size: 12.5px; }
+            .file-item { padding: 6px 10px; background: rgba(255, 255, 255, 0.5); border-left: 3px solid var(--primary-blue); border-radius: 0 6px 6px 0; margin-bottom: 4px; color: var(--primary-black); font-weight: 500; }
 
-            /* Адаптивные медиа-запросы для мобильных телефонов */
             @media (max-width: 480px) {
-                body {
-                    padding: 10px;
-                }
-                .container {
-                    padding: 25px 15px;
-                    border-radius: 12px;
-                }
-                .header-block {
-                    flex-direction: column;
-                    gap: 8px;
-                    text-align: center;
-                }
-                .header-block img {
-                    height: 45px;
-                }
-                .title-group {
-                    text-align: center;
-                }
-                h1 {
-                    font-size: 18px;
-                }
-                .drop-zone {
-                    padding: 20px 10px;
-                }
-                .drop-zone-text {
-                    font-size: 13px;
-                }
-                input[type="text"] {
-                    font-size: 13px;
-                    padding: 9px;
-                }
+                body { padding: 10px; }
+                .container { padding: 30px 18px; border-radius: 20px; }
+                .header-block { flex-direction: column; gap: 8px; text-align: center; margin-bottom: 25px; }
+                .header-block img { height: 46px; }
+                .title-group { text-align: center; }
+                h1 { font-size: 20px; }
+                .drop-zone { padding: 25px 15px; }
+                .drop-zone-text { font-size: 13.5px; }
+                .template-section { padding: 15px; border-radius: 12px; }
             }
         </style>
     </head>
@@ -336,9 +347,8 @@ async def main_page():
         
         <form id="upload-form">
             <div class="drop-zone" id="drop-zone">
-                <svg width="35" height="35" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-                <div class="drop-zone-text">Выберите файлы или перетащите их</div>
-                <div style="font-size:11px; color:#94a3b8; margin-top:4px; text-align:center;">Поддерживаются любые PDF документы</div>
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                <div class="drop-zone-text">Выберите PDF-файлы или перетащите</div>
             </div>
             
             <input type="file" id="file-input" multiple accept=".pdf" style="display: none;">
@@ -346,12 +356,12 @@ async def main_page():
             <div id="file-list"></div>
 
             <div class="template-section">
-                <h3>Конструктор шаблона имен</h3>
-                <label for="template-input">Задайте маску переименования:</label>
+                <h3>Конструктор шаблона</h3>
+                <label for="template-input">Маска переименования:</label>
                 <input type="text" id="template-input" name="template" value="{тип}_{код}_{название}_{год}">
                 
                 <div class="tags-info">
-                    Доступные динамические теги:
+                    Динамические теги:
                     <div class="tags-list">
                         <code>{тип}</code>
                         <code>{код}</code>
@@ -362,7 +372,7 @@ async def main_page():
                 </div>
             </div>
             
-            <button type="submit" id="submit-btn" disabled>Запустить обработку (ZIP)</button>
+            <button type="submit" id="submit-btn" disabled>Обработать документы (ZIP)</button>
         </form>
     </div>
 
@@ -407,7 +417,7 @@ async def main_page():
             selectedFiles.forEach(file => formData.append('files', file));
             formData.append('template', document.getElementById('template-input').value);
 
-            submitBtn.textContent = 'Обработка...';
+            submitBtn.textContent = 'Сборка архива...';
             submitBtn.disabled = true;
 
             try {
@@ -415,7 +425,7 @@ async def main_page():
                     method: 'POST',
                     body: formData
                 });
-                if (!response.ok) throw new Error('Ошибка при разборе PDF');
+                if (!response.ok) throw new Error('Ошибка обработки');
 
                 const blob = await response.blob();
                 const downloadUrl = window.URL.createObjectURL(blob);
@@ -431,7 +441,7 @@ async def main_page():
             } catch (err) {
                 alert(err.message);
             } finally {
-                submitBtn.textContent = 'Запустить обработку (ZIP)';
+                submitBtn.textContent = 'Обработать документы (ZIP)';
                 submitBtn.disabled = false;
             }
         });
