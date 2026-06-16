@@ -355,11 +355,11 @@ async def main_page():
                 gap: 8px;
             }
             .file-item { 
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
+                display: flex !important;
+                justify-content: space-between !important;
+                align-items: center !important;
                 padding: 10px 14px; 
-                background: rgba(255, 255, 255, 0.5); 
+                background: rgba(255, 255, 255, 0.6) !important; 
                 border-left: 4px solid var(--primary-blue); 
                 border-radius: 12px; 
                 color: var(--primary-black); 
@@ -375,27 +375,27 @@ async def main_page():
                 flex-grow: 1;
             }
             
-            /* Изолированные стили для кастомной текстовой кнопки удаления */
+            /* Стили для текстовой кнопки удаления */
             .file-delete-btn {
-                display: inline-block;
-                color: var(--error-red);
-                background: rgba(255, 59, 48, 0.08);
-                padding: 6px 12px;
-                font-size: 11px;
-                font-weight: 700;
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-                border-radius: 8px;
-                cursor: pointer;
+                display: inline-block !important;
+                color: var(--error-red) !important;
+                background: rgba(255, 59, 48, 0.08) !important;
+                padding: 6px 12px !important;
+                font-size: 11px !important;
+                font-weight: 700 !important;
+                text-transform: uppercase !important;
+                letter-spacing: 0.5px !important;
+                border-radius: 8px !important;
+                cursor: pointer !important;
                 user-select: none;
                 transition: all 0.2s ease;
-                border: 1px solid rgba(255, 59, 48, 0.15);
-                flex-shrink: 0;
+                border: 1px solid rgba(255, 59, 48, 0.15) !important;
+                flex-shrink: 0 !important;
             }
             .file-delete-btn:hover {
-                background: var(--error-red);
-                color: #ffffff;
-                border-color: var(--error-red);
+                background: var(--error-red) !important;
+                color: #ffffff !important;
+                border-color: var(--error-red) !important;
             }
 
             .instruction-card {
@@ -527,33 +527,25 @@ async def main_page():
             }
         }
 
-        function removeFile(index) {
+        // Выносим функцию удаления на глобальный уровень, чтобы она вызывалась по клику
+        window.deleteFileItem = function(index) {
             selectedFiles.splice(index, 1);
             updateInterface();
-        }
+        };
 
         function updateInterface() {
-            fileList.innerHTML = '';
+            let htmlContent = '';
             
             selectedFiles.forEach((file, index) => {
-                const item = document.createElement('div');
-                item.className = 'file-item';
-                
-                const nameSpan = document.createElement('span');
-                nameSpan.className = 'file-name';
-                nameSpan.textContent = `${index + 1}. ${file.name}`;
-                
-                // Рендерим как clickable span, чтобы обойти глобальные стили кнопок!
-                const deleteBtn = document.createElement('span');
-                deleteBtn.className = 'file-delete-btn';
-                deleteBtn.textContent = 'Удалить';
-                deleteBtn.onclick = () => removeFile(index);
-                
-                item.appendChild(nameSpan);
-                item.appendChild(deleteBtn);
-                fileList.appendChild(item);
+                htmlContent += `
+                    <div class="file-item">
+                        <span class="file-name">${index + 1}. ${file.name}</span>
+                        <span class="file-delete-btn" onclick="window.deleteFileItem(${index})">Удалить</span>
+                    </div>
+                `;
             });
             
+            fileList.innerHTML = htmlContent;
             submitBtn.disabled = selectedFiles.length === 0;
         }
 
