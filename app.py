@@ -7,14 +7,14 @@ from typing import List
 import easyocr
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
-import fitz  # Из пакета PyMuPDF
+import fitz  # PyMuPDF
 import numpy as np
 import pypdf
 
 app = FastAPI()
 
+# Инициализация OCR (будет работать, если установлены библиотеки и доступны веса)
 try:
-    # Если на сервере или локально нет GPU, False принудительно запускает на CPU
     reader = easyocr.Reader(['ru', 'en'], gpu=False)
 except Exception:
     reader = None
@@ -28,7 +28,6 @@ def extract_text_from_pure_scan(file_bytes: bytes) -> str:
             return ""
         
         ocr_pages_text = []
-        # Проходимся максимум по первым 3 страницам скана, если они перепутаны
         for i in range(min(3, len(doc))):
             page = doc[i]
             pix = page.get_pixmap(dpi=150)
@@ -39,21 +38,25 @@ def extract_text_from_pure_scan(file_bytes: bytes) -> str:
                 
         return "\n--- PAGE_BREAK ---\n".join(ocr_pages_text)
     except Exception as e:
-        print(f"Ошибка OCR распознавания: {e}")
+        print(f"Ошибка OCR: {e}")
         return ""
 
 def clean_title(title_str: str) -> str:
-    """Вспомогательная функция для чистки названий от мусора и переносов строк"""
-    if not title_str:
-        return ""
-    # Заменяем переносы строк и множественные пробелы на одно нижнее подчеркивание
+    if not title_str or title_str == "Без_названия":
+        return "Без_названия"
+    
+    # Заменяем все пробельные символы и переносы на нижнее подчеркивание
     title_str = re.sub(r'\s+', '_', title_str)
-    # Вычищаем запрещенные в путях символы
+    # Удаляем запрещенные в файловых системах символы
     title_str = re.sub(r'[\\/*?:"<>|]', "", title_str)
-    return title_str.strip().strip('_')
+    
+    # Жесткое ограничение длины имени файла, чтобы не поймать OSError
+    if len(title_str) > 100:
+        title_str = title_str[:97] + "..."
+        
+    return title_str.strip('_')
 
 def extract_pdf_info(file_bytes: bytes):
-    # Читаем весь текст из PDF, чтобы найти титульный лист, где бы он ни был
     all_pages_text = []
     try:
         pdf_reader = pypdf.PdfReader(BytesIO(file_bytes))
@@ -64,15 +67,15 @@ def extract_pdf_info(file_bytes: bytes):
     except Exception:
         pass
 
-    # Если pypdf не справился или текст слишком короткий, распознаем как скан
+    # Если текстовый слой пустой или слишком мал — отправляем на OCR
     if not all_pages_text or len("".join(all_pages_text).strip()) < 15:
         pure_scan_text = extract_text_from_pure_scan(file_bytes)
         if pure_scan_text:
             all_pages_text = [pure_scan_text]
 
-    full_document_text = "\n".join(all_pages_text)
+    full_document_text = "\n".join(all_pages_text) if all_pages_text else ""
     
-    # ЛОГИКА НАХОЖДЕНИЯ ТИТУЛЬНОГО ЛИСТА / ГЛАВНОГО ЛИСТА
+    # Поиск страницы с метаданными вуза
     target_text = full_document_text
     university_markers = ["минобрнауки", "университет", "институт", "кафедра", "мирэа", "бюджетное", "заключение"]
     for page_text in all_pages_text:
@@ -82,87 +85,109 @@ def extract_pdf_info(file_bytes: bytes):
             target_text = page_text
             break
 
-    # НОРМАЛИЗАЦИЯ: Убираем избыточные пробелы между буквами (схлопываем "З А К Л Ю Ч Е Н И Е")
-    normalized_text = re.sub(r'(?<=[А-Яа-яЁё])\s+(?=[А-Яа-яЁё]\b)', '', target_text)
-    text_lower = normalized_text.lower()
-    full_text_lower_global = re.sub(r'(?<=[А-Яа-яЁё])\s+(?=[А-Яа-яЁё]\b)', '', full_document_text).lower()
+    # Нормализация текста (убираем разрывы строк, удваиваем пробелы)
+    flat_text = re.sub(r'\s+', ' ', target_text)
+    flat_text_global = re.sub(r'\s+', ' ', full_document_text)
+    
+    # Убираем разреженный текст (З А К Л Ю Ч Е Н И Е -> Заключение)
+    flat_text = re.sub(r'(?<=[А-Яа-яЁё])\s+(?=[А-Яа-яЁё]\b)', '', flat_text)
+    flat_text_global = re.sub(r'(?<=[А-Яа-яЁё])\s+(?=[А-Яа-яЁё]\b)', '', flat_text_global)
 
-    # 1. УЛУЧШЕННЫЙ ПОИСК КОДА НАПРАВЛЕНИЯ
-    code = None
-    # А. Ищем стандартный формат XX.XX.XX
-    code_match = re.search(r'\b\d{2}\.\d{2}\.\d{2}\b', normalized_text)
-    if code_match:
-        code = code_match.group(0)
-    else:
-        # Б. Ищем слитный формат из 6 цифр (090404)
-        flat_code_match = re.search(r'\b\d{6}\b', normalized_text)
-        if flat_code_match:
-            c = flat_code_match.group(0)
-            code = f"{c[0:2]}.{c[2:4]}.{c[4:6]}"
-            
-    # В. РЕЗЕРВНЫЙ ПЛАН: Если кода нет, вытаскиваем его из шифра академической группы (ИКБО, ИКМО и т.д.)
-    if not code:
-        group_match = re.search(r'\bИК[А-Я]{2}-\d{2}-\d{2}\b', normalized_text, re.IGNORECASE)
-        if not group_match:
-            group_match = re.search(r'\bИК[А-Я]{2}-\d{2}-\d{2}\b', full_document_text, re.IGNORECASE)
-            
-        if group_match:
-            group_name = group_match.group(0).upper()
-            if "КМО" in group_name or "МППО" in group_name:
-                code = "09.04.04"
-            elif "ППО" in group_name or "ББО" in group_name:
-                code = "09.03.04"
-                
-    if not code:
-        code = "00.00.00"
+    text_lower = flat_text.lower()
+    global_text_lower = flat_text_global.lower()
 
-    # 2. Поиск года
-    year_match = re.search(r'\b(202[0-9]|201[0-9])\b', normalized_text)
-    if not year_match:
-        year_match = re.search(r'\b(202[0-9]|201[0-9])\b', full_document_text)
-    year = year_match.group(0) if year_match else "2026"
-
-    # 3. ОПРЕДЕЛЕНИЕ ТИПА И НАЗВАНИЯ ДОКУМЕНТА
+    # 1. ОПРЕДЕЛЕНИЕ ТИПА ДОКУМЕНТА
     doc_type = "Документ"
-    title = "Без_названия"
-
-    # Проверяем стандартные маркеры кафедры по очищенному тексту
     if "рабочая программа" in text_lower or "рпд" in text_lower or "rpd" in text_lower:
         doc_type = "РПД"
     elif "фонд оценочных" in text_lower or "фос" in text_lower:
         doc_type = "ФОС"
     elif "аннотация" in text_lower:
         doc_type = "Аннотация"
-    elif "заключение" in text_lower:
+    elif "заключен" in text_lower:
         doc_type = "Заключение"
     elif "практик" in text_lower:
         doc_type = "Практика"
     elif "вкр" in text_lower or "выпускная квалификационная" in text_lower or "диссертация" in text_lower:
         doc_type = "ВКР"
 
-    # Поиск темы/названия по ключевым фразам
-    theme_match = re.search(r'(?:тему|тема|дисциплины|дисциплине|по|название|программа)\s+["«]?([А-Яа-яЁёA-Za-z0-9\s\-,.]{3,120})["»]?', normalized_text, re.IGNORECASE | re.UNICODE)
-    
-    if theme_match:
-        title = theme_match.group(1).strip()
+    # 2. ПОИСК КОДОВ НАПРАВЛЕНИЙ (09.03.04, 09.04.04 и т.д.)
+    code = None
+    code_match = re.search(r'\b\d{2}\.\d{2}\.\d{2}\b', flat_text)
+    if code_match:
+        code = code_match.group(0)
     else:
-        # Универсальный хантинг по CapsLock, если ключевых фраз не нашлось
-        uppercase_strings = re.findall(r'\b[А-ЯЁ]{4,60}(?:\s+[А-ЯЁ]{2,60})*\b', normalized_text, re.UNICODE)
-        ignored_words = ["МИНОБРНАУКИ", "РОССИИ", "УНИВЕРСИТЕТ", "ИНСТИТУТ", "КАФЕДРА", "РТУ", "МИРЭА"]
+        flat_code_match = re.search(r'\b\d{6}\b', flat_text)
+        if flat_code_match:
+            c = flat_code_match.group(0)
+            code = f"{c[0:2]}.{c[2:4]}.{c[4:6]}"
+            
+    # Логика автоопределения кода по шифру группы (резервный вариант)
+    if not code:
+        group_match = re.search(r'\bИК[А-Яa-я0-9\-_\s]{4,12}\b', flat_text, re.IGNORECASE)
+        if not group_match:
+            group_match = re.search(r'\bИК[А-Яa-я0-9\-_\s]{4,12}\b', flat_text_global, re.IGNORECASE)
+            
+        if group_match:
+            group_name = group_match.group(0).upper()
+            if "КМО" in group_name or "МППО" in group_name:
+                code = "09.04.04"
+            elif "КБО" in group_name or "ППО" in group_name or "ББО" in group_name:
+                code = "09.03.04"
+                
+    if not code:
+        code = "00.00.00"
+
+    # 3. ПОИСК ГОДА
+    year = "2026"
+    year_match = re.search(r'\b(202[0-9]|201[0-9])\s*(?:г\.?|года)?\b', flat_text)
+    if not year_match:
+        year_match = re.search(r'\b(202[0-9]|201[0-9])\b', flat_text_global)
+    if year_match:
+        year = year_match.group(1)
+
+    # 4. БРОНЕБОЙНОЕ ИЗВЛЕЧЕНИЕ ТЕМЫ / НАЗВАНИЯ
+    title = "Без_названия"
+    
+    if doc_type == "Заключение":
+        # Находим ключевой маркер начала темы
+        start_marker = re.search(r'(?:на тему|тему|тема)\s+', flat_text, re.IGNORECASE)
+        if start_marker:
+            start_idx = start_marker.end()
+            # Берем весь текст от маркера до конца строки
+            raw_theme_part = flat_text[start_idx:].strip()
+            
+            # Режем строго по фразе "в соответствии" (она всегда идет после темы в заключениях)
+            if "в соответствии" in raw_theme_part.lower():
+                parts = re.split(r'\s+в\s+соответствии', raw_theme_part, flags=re.IGNORECASE)
+                title = parts[0].strip()
+            else:
+                # Если фразы почему-то нет, берем первые 120 символов текста
+                title = raw_theme_part[:120].strip()
+    else:
+        # Для РПД/ФОС ищем текст внутри первых кавычек после слова "тема/дисциплина"
+        theme_block = re.search(r'(?:на тему|тему|тема|дисциплины|дисциплине)\s+["«]([^"»]{3,150})["»]', flat_text, re.IGNORECASE)
+        if theme_block:
+            title = theme_block.group(1).strip()
+
+    # Очищаем тему от крайних кавычек и лишних знаков
+    title = title.strip('«»""‘’ ')
+
+    # Резервный поиск по CAPS LOCK строкам (если выше ничего не нашлось)
+    if title == "Без_названия" or len(title) < 3:
+        uppercase_strings = re.findall(r'\b[А-ЯЁ]{4,60}(?:\s+[А-ЯЁ]{2,60})*\b', flat_text, re.UNICODE)
+        ignored_words = ["МИНОБРНАУКИ", "РОССИИ", "УНИВЕРСИТЕТ", "ИНСТИТУТ", "КАФЕДРА", "РТУ", "МИРЭА", "ЗАКЛЮЧЕНИЕ"]
         valid_titles = [s for s in uppercase_strings if not any(ignored in s for ignored in ignored_words)]
-        
         if valid_titles:
             title = valid_titles[0].strip()
-            if doc_type == "Документ":
-                doc_type = title.capitalize()
 
-    # Фикс для видов практик ({вид})
+    # Вид практики
     practice_type = "Учебная"
-    if "преддиплом" in text_lower or "преддиплом" in full_text_lower_global:
+    if "преддиплом" in text_lower or "преддиплом" in global_text_lower:
         practice_type = "Преддипломная"
-    elif "производствен" in text_lower or "производствен" in full_text_lower_global:
+    elif "производствен" in text_lower or "производствен" in global_text_lower:
         practice_type = "Производственная"
-    elif "научно-исслед" in text_lower or "нир" in text_lower or "нир" in full_text_lower_global:
+    elif "научно-исслед" in text_lower or "нир" in text_lower or "нир" in global_text_lower:
         practice_type = "НИР"
 
     return {
@@ -194,10 +219,14 @@ async def rename_pdfs(files: List[UploadFile] = File(...), template: str = Form(
     zip_buffer = BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
         for file in files:
-            file_bytes = await file.read()
-            info = extract_pdf_info(file_bytes)
-            new_name = apply_template(template, info) + ".pdf"
-            zip_file.writestr(new_name, file_bytes)
+            try:
+                file_bytes = await file.read()
+                info = extract_pdf_info(file_bytes)
+                new_name = apply_template(template, info) + ".pdf"
+                zip_file.writestr(new_name, file_bytes)
+            except Exception as e:
+                print(f"Ошибка обработки файла {file.filename}: {e}")
+                continue
             
     zip_buffer.seek(0)
     return StreamingResponse(
