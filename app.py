@@ -14,6 +14,7 @@ import pypdf
 app = FastAPI()
 
 try:
+    # Если на сервере или локально нет GPU, False принудительно запускает на CPU
     reader = easyocr.Reader(['ru', 'en'], gpu=False)
 except Exception:
     reader = None
@@ -34,37 +35,112 @@ def extract_text_from_pure_scan(file_bytes: bytes) -> str:
         print(f"Ошибка OCR распознавания: {e}")
         return ""
 
+def clean_title(title_str: str) -> str:
+    """Вспомогательная функция для чистки названий от мусора и переносов строк"""
+    if not title_str:
+        return ""
+    # Заменяем переносы строк и множественные пробелы на одно нижнее подчеркивание
+    title_str = re.sub(r'\s+', '_', title_str)
+    # Вычищаем запрещенные в путях символы
+    title_str = re.sub(r'[\\/*?:"<>|]', "", title_str)
+    return title_str.strip().strip('_')
+
 def extract_pdf_info(file_bytes: bytes):
-    text = ""
+    # Читаем весь текст из PDF, чтобы найти титульный лист, где бы он ни был
+    all_pages_text = []
     try:
         pdf_reader = pypdf.PdfReader(BytesIO(file_bytes))
-        for i in range(min(3, len(pdf_reader.pages))):
-            page_text = pdf_reader.pages[i].extract_text()
+        for page in pdf_reader.pages:
+            page_text = page.extract_text()
             if page_text:
-                text += page_text + "\n"
+                all_pages_text.append(page_text)
     except Exception:
         pass
 
-    if len(text.strip()) < 15:
-        text = extract_text_from_pure_scan(file_bytes)
+    # Если pypdf не справился или документ пустой (скан), пробуем OCR первой страницы
+    if not all_pages_text or len("".join(all_pages_text).strip()) < 15:
+        pure_scan_text = extract_text_from_pure_scan(file_bytes)
+        if pure_scan_text:
+            all_pages_text = [pure_scan_text]
 
-    code_match = re.search(r'\b\d{2}\.\d{2}\.\d{2}\b', text)
-    code = code_match.group(0) if code_match else "00.00.00"
+    # Полный текст документа для резервного поиска
+    full_document_text = "\n".join(all_pages_text)
+    
+    # ЛОГИКА НАХОЖДЕНИЯ ТИТУЛЬНОГО ЛИСТА
+    # Ищем страницу, которая максимально похожа на титульник (содержит университетские маркеры)
+    target_text = full_document_text # По умолчанию ищем по всему тексту
+    
+    university_markers = ["минобрнауки", "университет", "институт", "кафедра", "мирэа", "бюджетное"]
+    for page_text in all_pages_text:
+        page_lower = page_text.lower()
+        # Если на странице совпало хотя бы 2 маркера титульного листа — берем её за основу
+        matches = sum(1 for marker in university_markers if marker in page_lower)
+        if matches >= 2:
+            target_text = page_text
+            break # Нашли титульник, работаем с его текстом!
 
-    year_match = re.search(r'\b(202[0-9]|201[0-9])\b', text)
+    text_lower = target_text.lower()
+
+    # 1. Поиск кода направления (сначала стандартный XX.XX.XX, потом слитный XXXXXX)
+    code_match = re.search(r'\b\d{2}\.\d{2}\.\d{2}\b', target_text)
+    if code_match:
+        code = code_match.group(0)
+    else:
+        flat_code_match = re.search(r'\b\d{6}\b', target_text)
+        if flat_code_match:
+            c = flat_code_match.group(0)
+            code = f"{c[0:2]}.{c[2:4]}.{c[4:6]}"
+        else:
+            # Если на титульнике не нашли, ищем по всему документу
+            global_code_match = re.search(r'\b\d{2}\.\d{2}\.\d{2}\b', full_document_text)
+            code = global_code_match.group(0) if global_code_match else "00.00.00"
+
+    # 2. Поиск года (ищем в районе титульника или по всему документу)
+    year_match = re.search(r'\b(202[0-9]|201[0-9])\b', target_text)
+    if not year_match:
+        year_match = re.search(r'\b(202[0-9]|201[0-9])\b', full_document_text)
     year = year_match.group(0) if year_match else "2026"
 
+    # 3. ДИНАМИЧЕСКОЕ ОПРЕДЕЛЕНИЕ ТИПА И НАЗВАНИЯ ДОКУМЕНТА
     doc_type = "Документ"
-    text_lower = text.lower()
+    title = "Без_названия"
+
+    # Проверяем стандартные жесткие маркеры кафедры (высокий приоритет)
     if "рабочая программа" in text_lower or "рпд" in text_lower:
-        doc_type = "РПД"
-    elif "практик" in text_lower:
-        doc_type = "Практика"
+        doc_type = "RPD"
     elif "фонд оценочных" in text_lower or "фос" in text_lower:
         doc_type = "ФОС"
     elif "аннотация" in text_lower:
         doc_type = "Аннотация"
+    elif "заключение" in text_lower:
+        doc_type = "Заключение"
+    elif "практик" in text_lower:
+        doc_type = "Практика"
+    elif "вкр" in text_lower or "выпускная квалификационная" in text_lower or "диссертация" in text_lower:
+        doc_type = "ВКР"
 
+    # Попытка вытащить тему/название по ключевым фразам
+    theme_match = re.search(r'(?:тему|тема|дисциплины|дисциплине|по|название|программа)\s+["«]?([А-Яа-яЁёA-Za-z0-9\s\-,.]{3,70})["»]?', target_text, re.IGNORECASE | re.UNICODE)
+    
+    if theme_match:
+        title = theme_match.group(1).strip()
+    else:
+        # УНИВЕРСАЛЬНЫЙ ХАНТЕР ЗАГОЛОВКОВ:
+        # Если ключевых слов нет, ищем строки, написанные полностью ЗАГЛАВНЫМИ БУКВАМИ (от 4 до 60 символов)
+        # Обычно на титульниках тип документа (МЕТОДИЧЕСКИЕ УКАЗАНИЯ, ОТЧЕТ) пишут именно так.
+        uppercase_strings = re.findall(r'\b[А-ЯЁ]{4,60}(?:\s+[А-ЯЁ]{2,60})*\b', target_text, re.UNICODE)
+        # Фильтруем названия организации (МИРЭА, МИНОБРНАУКИ и т.д.)
+        ignored_words = ["МИНОБРНАУКИ", "РОССИИ", "УНИВЕРСИТЕТ", "ИНСТИТУТ", "КАФЕДРА", "РТУ", "МИРЭА"]
+        valid_titles = [s for s in uppercase_strings if not any(ignored in s for ignored in ignored_words)]
+        
+        if valid_titles:
+            # Берем первую подходящую строку CapsLock'ом как название
+            title = valid_titles[0].strip()
+            if doc_type == "Документ":
+                # Если тип не определен, то эта же строка может стать типом
+                doc_type = title.capitalize()
+
+    # Специфический фикс для видов практик (оставляем тег {вид})
     practice_type = "Учебная"
     if "преддиплом" in text_lower:
         practice_type = "Преддипломная"
@@ -73,25 +149,22 @@ def extract_pdf_info(file_bytes: bytes):
     elif "научно-исслед" in text_lower or "нир" in text_lower:
         practice_type = "НИР"
 
-    title = "Без_названия"
-    title_match = re.search(r'(?:дисциплины|дисциплине|по|название|программа)\s+["«]?([А-Яа-яA-Za-z\s\-,]{3,50})["»]?', text, re.IGNORECASE)
-    if title_match:
-        title = title_match.group(1).strip().replace(" ", "_")
-    
     return {
         "тип": doc_type,
         "код": code,
         "год": year,
         "вид": practice_type,
-        "название": title
+        "название": clean_title(title)
     }
 
 def apply_template(template: str, info: dict) -> str:
     result = template
     for key, value in info.items():
-        result = result.replace(f"{{{key}}}", str(value))
+        result = result.replace(f"{{ {key} }}".replace(" ", ""), str(value))
+    # Вычищаем символы, запрещенные в именах файлов Windows/Linux
     result = re.sub(r'[\\/*?:"<>|]', "", result)
-    return result.strip()
+    result = result.strip()
+    return result if result else "Обработанный_документ"
 
 @app.get("/logo.png")
 async def get_logo():
@@ -367,7 +440,7 @@ async def main_page():
                 backdrop-filter: blur(5px);
                 box-sizing: border-box;
                 width: 100% !important;
-                min-width: 0 !important; /* Важно для корректного сжатия внутренних элементов */
+                min-width: 0 !important;
             }
             .file-name {
                 white-space: nowrap;
@@ -375,7 +448,7 @@ async def main_page():
                 text-overflow: ellipsis;
                 margin-right: 12px;
                 flex-grow: 1;
-                min-width: 0 !important; /* Предотвращает выталкивание кнопки длинным именем файла */
+                min-width: 0 !important;
             }
             
             .file-delete-btn {
@@ -394,7 +467,7 @@ async def main_page():
                 user-select: none;
                 transition: all 0.2s ease;
                 border: 1px solid rgba(255, 59, 48, 0.15) !important;
-                flex-shrink: 0 !important; /* Кнопка никогда не сожмется и не исчезнет */
+                flex-shrink: 0 !important;
             }
             .file-delete-btn:hover {
                 background: var(--error-red) !important;
@@ -487,10 +560,10 @@ async def main_page():
     <div class="instruction-card">
         <h4>💡 Памятка по разбору документов</h4>
         <div class="instruction-step">
-            <strong>{тип}</strong> — категория: <code>РПД</code>, <code>Практика</code>, <code>ФОС</code>, <code>Аннотация</code>.
+            <strong>{тип}</strong> — автоматически определяет категорию: РПД, Практика, ФОС или название документа с листа.
         </div>
         <div class="instruction-step">
-            <strong>{код}</strong> — шифр направления подготовки (например, <code>09.03.04</code>).
+            <strong>{код}</strong> — извлекает шифр направления подготовки (например, 09.03.04 или слитный 090404).
         </div>
         
         <div class="instruction-grid">
@@ -531,7 +604,6 @@ async def main_page():
             }
         }
 
-        // Абсолютно надежное делегирование события клика по кнопке удаления
         fileList.addEventListener('click', (e) => {
             if (e.target.classList.contains('file-delete-btn')) {
                 const index = parseInt(e.target.getAttribute('data-index'), 10);
@@ -541,17 +613,12 @@ async def main_page():
         });
 
         function updateInterface() {
-            let htmlContent = '';
-            
-            selectedFiles.forEach((file, index) => {
-                htmlContent += `
-                    <div class="file-item">
-                        <span class="file-name">${index + 1}. ${file.name}</span>
-                        <span class="file-delete-btn" data-index="${index}">Удалить</span>
-                    </div>
-                `;
-            });
-            
+            var htmlContent = '';
+            for (var i = 0; i < selectedFiles.length; i++) {
+                var file = selectedFiles[i];
+                var displayIndex = i + 1;
+                htmlContent += '<div class="file-item"><span class="file-name">' + displayIndex + '. ' + file.name + '</span><span class="file-delete-btn" data-index="' + i + '">Удалить</span></div>';
+            }
             fileList.innerHTML = htmlContent;
             submitBtn.disabled = selectedFiles.length === 0;
         }
