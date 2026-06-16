@@ -7,40 +7,34 @@ from typing import List
 import easyocr
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
-import fitz  # Из пакета PyMuPDF (очень быстрый и легкий)
+import fitz  # Из пакета PyMuPDF
 import numpy as np
 import pypdf
 
 app = FastAPI()
 
-# Инициализируем OCR-ридер один раз при старте приложения, чтобы не тратить время на каждый запрос
 try:
     reader = easyocr.Reader(['ru', 'en'], gpu=False)
 except Exception:
     reader = None
 
 def extract_text_from_pure_scan(file_bytes: bytes) -> str:
-    """Если в PDF нет текстового слоя, рендерит первую страницу в картинку и гонит через OCR."""
     if reader is None:
         return ""
-    
     try:
         doc = fitz.open(stream=file_bytes, filetype="pdf")
         if len(doc) == 0:
             return ""
-        
         page = doc[0]
         pix = page.get_pixmap(dpi=150)
         img_bytes = pix.tobytes("png")
         ocr_result = reader.readtext(img_bytes, detail=0)
-        
         return "\n".join(ocr_result)
     except Exception as e:
         print(f"Ошибка OCR распознавания: {e}")
         return ""
 
 def extract_pdf_info(file_bytes: bytes):
-    """Вытаскивает текстовые паттерны. Если текст пустой — запускает OCR скана."""
     text = ""
     try:
         pdf_reader = pypdf.PdfReader(BytesIO(file_bytes))
@@ -93,7 +87,6 @@ def extract_pdf_info(file_bytes: bytes):
     }
 
 def apply_template(template: str, info: dict) -> str:
-    """Заменяет теги {переменная} на данные из PDF."""
     result = template
     for key, value in info.items():
         result = result.replace(f"{{{key}}}", str(value))
@@ -220,13 +213,6 @@ async def main_page():
                 z-index: 1;
                 transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
             }
-            .container:hover {
-                transform: translateY(-2px);
-                box-shadow: 
-                    inset 0 0 0 1px rgba(255, 255, 255, 0.7),
-                    inset 0 15px 30px rgba(255, 255, 255, 0.35),
-                    0 35px 70px rgba(0, 50, 100, 0.12);
-            }
             
             .header-block {
                 display: flex;
@@ -239,7 +225,6 @@ async def main_page():
                 height: 52px;
                 width: auto;
                 object-fit: contain;
-                filter: drop-shadow(0 2px 4px rgba(0,0,0,0.05));
             }
             .title-group {
                 text-align: left;
@@ -273,18 +258,14 @@ async def main_page():
                 display: flex;
                 flex-direction: column;
                 align-items: center;
-                box-shadow: inset 0 2px 4px rgba(0,0,0,0.01);
             }
             .drop-zone:hover, .drop-zone.dragover {
                 background: rgba(255, 255, 255, 0.5);
                 border-color: var(--primary-blue);
-                box-shadow: 0 10px 25px rgba(0, 132, 255, 0.06);
-                transform: translateY(-1px);
             }
             .drop-zone svg {
                 stroke: var(--primary-blue);
                 margin-bottom: 12px;
-                filter: drop-shadow(0 2px 4px rgba(0,132,255,0.15));
             }
             .drop-zone-text {
                 font-weight: 600; 
@@ -309,9 +290,8 @@ async def main_page():
                 color: var(--primary-black); 
                 font-size: 14.5px; 
                 font-weight: 600;
-                padding-left: 2px;
             }
-            label { display: block; font-size: 11px; color: rgba(0,0,0,0.6); margin-bottom: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+            label { display: block; font-size: 11px; color: rgba(0,0,0,0.6); margin-bottom: 8px; font-weight: 700; text-transform: uppercase; }
             
             input[type="text"] {
                 width: 100%;
@@ -324,14 +304,6 @@ async def main_page():
                 font-size: 14px;
                 font-weight: 600;
                 color: var(--primary-black);
-                box-shadow: inset 0 1px 2px rgba(0,0,0,0.02);
-                transition: all 0.2s;
-            }
-            input[type="text"]:focus {
-                outline: none;
-                background: rgba(255, 255, 255, 0.7);
-                border-color: var(--primary-blue);
-                box-shadow: 0 0 0 3px rgba(0, 132, 255, 0.12);
             }
             
             .tags-info { font-size: 11.5px; color: rgba(0,0,0,0.6); margin-top: 12px; line-height: 1.5; }
@@ -345,7 +317,8 @@ async def main_page():
                 font-weight: 600;
             }
             
-            button {
+            /* Стили для ГЛАВНОЙ кнопки отправки */
+            button[type="submit"] {
                 background: linear-gradient(180deg, #2c2c2e 0%, #0f0f10 100%);
                 color: white;
                 border: 1px solid rgba(0,0,0,0.2);
@@ -358,12 +331,10 @@ async def main_page():
                 transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
                 box-shadow: 0 4px 15px rgba(0, 0, 0, 0.12);
             }
-            button:hover:not(:disabled) { 
+            button[type="submit"]:hover:not(:disabled) { 
                 background: linear-gradient(180deg, #1e1e20 0%, #000000 100%);
-                box-shadow: 0 8px 25px rgba(0, 132, 255, 0.2);
-                transform: translateY(-0.5px);
             }
-            button:disabled { 
+            button[type="submit"]:disabled { 
                 background: rgba(0, 0, 0, 0.05); 
                 color: rgba(0, 0, 0, 0.25); 
                 border: none;
@@ -371,32 +342,30 @@ async def main_page():
                 box-shadow: none; 
             }
             
-            /* Стили для списка файлов и кнопок удаления */
+            /* Стили для списка файлов */
             #file-list { 
                 text-align: left; 
-                max-height: 160px; 
+                max-height: 200px; 
                 overflow-y: auto; 
-                margin-top: 15px; 
-                font-size: 12.5px;
+                margin-top: 20px; 
+                margin-bottom: 10px;
+                font-size: 13px;
                 display: flex;
                 flex-direction: column;
-                gap: 6px;
+                gap: 8px;
             }
             .file-item { 
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                padding: 8px 12px; 
-                background: rgba(255, 255, 255, 0.45); 
-                border-left: 3px solid var(--primary-blue); 
-                border-radius: 10px; 
+                padding: 10px 14px; 
+                background: rgba(255, 255, 255, 0.5); 
+                border-left: 4px solid var(--primary-blue); 
+                border-radius: 12px; 
                 color: var(--primary-black); 
                 font-weight: 500; 
                 backdrop-filter: blur(5px);
-                transition: background 0.2s;
-            }
-            .file-item:hover {
-                background: rgba(255, 255, 255, 0.6);
+                box-sizing: border-box;
             }
             .file-name {
                 white-space: nowrap;
@@ -406,27 +375,27 @@ async def main_page():
                 flex-grow: 1;
             }
             
-            /* Новая явная кнопка удаления */
+            /* Изолированные стили для кастомной текстовой кнопки удаления */
             .file-delete-btn {
-                background: #ffffff;
+                display: inline-block;
                 color: var(--error-red);
-                border: 1px solid rgba(255, 59, 48, 0.2);
-                padding: 5px 10px;
+                background: rgba(255, 59, 48, 0.08);
+                padding: 6px 12px;
                 font-size: 11px;
-                font-weight: bold;
+                font-weight: 700;
                 text-transform: uppercase;
+                letter-spacing: 0.5px;
+                border-radius: 8px;
                 cursor: pointer;
-                width: auto;
-                box-shadow: none;
-                border-radius: 6px;
-                transition: all 0.2s;
+                user-select: none;
+                transition: all 0.2s ease;
+                border: 1px solid rgba(255, 59, 48, 0.15);
+                flex-shrink: 0;
             }
             .file-delete-btn:hover {
-                background: var(--error-red) !important;
-                color: #ffffff !important;
-                border-color: var(--error-red) !important;
-                box-shadow: none !important;
-                transform: none !important;
+                background: var(--error-red);
+                color: #ffffff;
+                border-color: var(--error-red);
             }
 
             .instruction-card {
@@ -440,82 +409,26 @@ async def main_page():
                 max-width: 500px;
                 box-sizing: border-box;
                 margin-top: 25px;
-                box-shadow: 
-                    inset 0 0 0 1px rgba(255, 255, 255, 0.4),
-                    0 15px 35px rgba(0, 40, 80, 0.04);
+                box-shadow: 0 15px 35px rgba(0, 40, 80, 0.04);
                 text-align: left;
                 z-index: 1;
-                transition: all 0.3s ease;
             }
-            .instruction-card:hover {
-                background: rgba(255, 255, 255, 0.45);
-            }
-            .instruction-card h4 {
-                margin: 0 0 15px 0;
-                color: var(--primary-black);
-                font-size: 14px;
-                font-weight: 700;
-                display: flex;
-                align-items: center;
-                gap: 8px;
-            }
-            .instruction-step {
-                font-size: 13px;
-                color: rgba(13, 13, 14, 0.7);
-                margin-bottom: 10px;
-                line-height: 1.4;
-            }
-            .instruction-step strong {
-                color: #0066dd;
-            }
-            .instruction-grid {
-                margin-top: 15px;
-                padding-top: 15px;
-                border-top: 1px solid rgba(0,0,0,0.06);
-                font-size: 12px;
-                display: flex;
-                flex-direction: column;
-                gap: 8px;
-            }
-            .instruction-grid div {
-                color: rgba(13, 13, 14, 0.6);
-            }
-            .instruction-grid code {
-                display: block;
-                background: rgba(255, 255, 255, 0.5);
-                border: 1px solid rgba(255,255,255,0.4);
-                padding: 8px 12px;
-                border-radius: 8px;
-                margin-top: 4px;
-                font-family: 'SF Mono', monospace;
-                color: var(--primary-black);
-                font-size: 11.5px;
-                word-break: break-all;
-            }
+            .instruction-card h4 { margin: 0 0 15px 0; color: var(--primary-black); font-size: 14px; font-weight: 700; }
+            .instruction-step { font-size: 13px; color: rgba(13, 13, 14, 0.7); margin-bottom: 10px; line-height: 1.4; }
+            .instruction-grid { margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(0,0,0,0.06); font-size: 12px; display: flex; flex-direction: column; gap: 8px; }
+            .instruction-grid code { display: block; background: rgba(255, 255, 255, 0.5); border: 1px solid rgba(255,255,255,0.4); padding: 8px 12px; border-radius: 8px; margin-top: 4px; font-family: 'SF Mono', monospace; color: var(--primary-black); font-size: 11.5px; word-break: break-all; }
 
-            .page-footer {
-                text-align: center;
-                margin-top: 40px;
-                font-size: 12px;
-                color: rgba(13, 13, 14, 0.45);
-                line-height: 1.6;
-                z-index: 1;
-                font-weight: 500;
-            }
-            .page-footer p {
-                margin: 4px 0;
-            }
+            .page-footer { text-align: center; margin-top: 40px; font-size: 12px; color: rgba(13, 13, 14, 0.45); line-height: 1.6; z-index: 1; }
+            .page-footer p { margin: 4px 0; }
 
             @media (max-width: 480px) {
                 body { padding: 30px 10px 40px 10px; }
                 .container { padding: 35px 20px; border-radius: 26px; }
                 .instruction-card { padding: 20px; border-radius: 20px; }
                 .header-block { flex-direction: column; gap: 8px; text-align: center; margin-bottom: 25px; }
-                .header-block img { height: 46px; }
                 .title-group { text-align: center; }
                 h1 { font-size: 20px; }
                 .drop-zone { padding: 30px 15px; }
-                .drop-zone-text { font-size: 13.5px; }
                 .template-section { padding: 18px; border-radius: 16px; }
             }
         </style>
@@ -570,13 +483,10 @@ async def main_page():
     <div class="instruction-card">
         <h4>💡 Памятка по разбору документов</h4>
         <div class="instruction-step">
-            <strong>{тип}</strong> — автоматически определяет категорию: <code>РПД</code>, <code>Практика</code>, <code>ФОС</code> или <code>Аннотация</code>.
+            <strong>{тип}</strong> — категория: <code>РПД</code>, <code>Практика</code>, <code>ФОС</code>, <code>Аннотация</code>.
         </div>
         <div class="instruction-step">
-            <strong>{код}</strong> — извлекает шифр направления подготовки (например, <code>09.03.04</code>).
-        </div>
-        <div class="instruction-step">
-            <strong>{вид}</strong> — тип практики (<code>Учебная</code>, <code>Производственная</code>, <code>Преддипломная</code>, <code>НИР</code>).
+            <strong>{код}</strong> — шифр направления подготовки (например, <code>09.03.04</code>).
         </div>
         
         <div class="instruction-grid">
@@ -593,7 +503,6 @@ async def main_page():
 
     <div class="page-footer">
         <p>© 2026 Кафедра ИиППО. Все права защищены.</p>
-        <p>Разработано в рамках внутренней автоматизации учебного процесса и документооборота кафедры.</p>
     </div>
 
     <script>
@@ -625,6 +534,7 @@ async def main_page():
 
         function updateInterface() {
             fileList.innerHTML = '';
+            
             selectedFiles.forEach((file, index) => {
                 const item = document.createElement('div');
                 item.className = 'file-item';
@@ -633,8 +543,8 @@ async def main_page():
                 nameSpan.className = 'file-name';
                 nameSpan.textContent = `${index + 1}. ${file.name}`;
                 
-                const deleteBtn = document.createElement('button');
-                deleteBtn.type = 'button';
+                // Рендерим как clickable span, чтобы обойти глобальные стили кнопок!
+                const deleteBtn = document.createElement('span');
                 deleteBtn.className = 'file-delete-btn';
                 deleteBtn.textContent = 'Удалить';
                 deleteBtn.onclick = () => removeFile(index);
@@ -643,6 +553,7 @@ async def main_page():
                 item.appendChild(deleteBtn);
                 fileList.appendChild(item);
             });
+            
             submitBtn.disabled = selectedFiles.length === 0;
         }
 
