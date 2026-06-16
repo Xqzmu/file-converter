@@ -258,6 +258,7 @@ async def main_page():
                 display: flex;
                 flex-direction: column;
                 align-items: center;
+                margin-bottom: 20px;
             }
             .drop-zone:hover, .drop-zone.dragover {
                 background: rgba(255, 255, 255, 0.5);
@@ -317,7 +318,6 @@ async def main_page():
                 font-weight: 600;
             }
             
-            /* Стили для ГЛАВНОЙ кнопки отправки */
             button[type="submit"] {
                 background: linear-gradient(180deg, #2c2c2e 0%, #0f0f10 100%);
                 color: white;
@@ -342,42 +342,46 @@ async def main_page():
                 box-shadow: none; 
             }
             
-            /* Стили для списка файлов */
             #file-list { 
                 text-align: left; 
-                max-height: 200px; 
+                max-height: 240px; 
                 overflow-y: auto; 
-                margin-top: 20px; 
-                margin-bottom: 10px;
+                margin-top: 5px;
+                margin-bottom: 20px;
                 font-size: 13px;
                 display: flex;
                 flex-direction: column;
                 gap: 8px;
+                width: 100%;
             }
             .file-item { 
                 display: flex !important;
                 justify-content: space-between !important;
                 align-items: center !important;
                 padding: 10px 14px; 
-                background: rgba(255, 255, 255, 0.6) !important; 
+                background: rgba(255, 255, 255, 0.7) !important; 
                 border-left: 4px solid var(--primary-blue); 
                 border-radius: 12px; 
                 color: var(--primary-black); 
                 font-weight: 500; 
                 backdrop-filter: blur(5px);
                 box-sizing: border-box;
+                width: 100% !important;
+                min-width: 0 !important; /* Важно для корректного сжатия внутренних элементов */
             }
             .file-name {
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
-                margin-right: 15px;
+                margin-right: 12px;
                 flex-grow: 1;
+                min-width: 0 !important; /* Предотвращает выталкивание кнопки длинным именем файла */
             }
             
-            /* Стили для текстовой кнопки удаления */
             .file-delete-btn {
-                display: inline-block !important;
+                display: inline-flex !important;
+                align-items: center;
+                justify-content: center;
                 color: var(--error-red) !important;
                 background: rgba(255, 59, 48, 0.08) !important;
                 padding: 6px 12px !important;
@@ -390,7 +394,7 @@ async def main_page():
                 user-select: none;
                 transition: all 0.2s ease;
                 border: 1px solid rgba(255, 59, 48, 0.15) !important;
-                flex-shrink: 0 !important;
+                flex-shrink: 0 !important; /* Кнопка никогда не сожмется и не исчезнет */
             }
             .file-delete-btn:hover {
                 background: var(--error-red) !important;
@@ -449,16 +453,16 @@ async def main_page():
             </div>
         </div>
         
-        <form id="upload-form">
-            <div class="drop-zone" id="drop-zone">
-                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-                <div class="drop-zone-text">Выберите PDF-файлы или перетащите</div>
-            </div>
-            
-            <input type="file" id="file-input" multiple accept=".pdf" style="display: none;">
-            
-            <div id="file-list"></div>
+        <div class="drop-zone" id="drop-zone">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+            <div class="drop-zone-text">Выберите PDF-файлы или перетащите</div>
+        </div>
+        
+        <input type="file" id="file-input" multiple accept=".pdf" style="display: none;">
+        
+        <div id="file-list"></div>
 
+        <form id="upload-form">
             <div class="template-section">
                 <h3>Конструктор шаблона</h3>
                 <label for="template-input">Маска переименования:</label>
@@ -527,11 +531,14 @@ async def main_page():
             }
         }
 
-        // Выносим функцию удаления на глобальный уровень, чтобы она вызывалась по клику
-        window.deleteFileItem = function(index) {
-            selectedFiles.splice(index, 1);
-            updateInterface();
-        };
+        // Абсолютно надежное делегирование события клика по кнопке удаления
+        fileList.addEventListener('click', (e) => {
+            if (e.target.classList.contains('file-delete-btn')) {
+                const index = parseInt(e.target.getAttribute('data-index'), 10);
+                selectedFiles.splice(index, 1);
+                updateInterface();
+            }
+        });
 
         function updateInterface() {
             let htmlContent = '';
@@ -540,7 +547,7 @@ async def main_page():
                 htmlContent += `
                     <div class="file-item">
                         <span class="file-name">${index + 1}. ${file.name}</span>
-                        <span class="file-delete-btn" onclick="window.deleteFileItem(${index})">Удалить</span>
+                        <span class="file-delete-btn" data-index="${index}">Удалить</span>
                     </div>
                 `;
             });
