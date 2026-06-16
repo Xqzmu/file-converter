@@ -14,7 +14,6 @@ import pypdf
 app = FastAPI()
 
 # Инициализируем OCR-ридер один раз при старте приложения, чтобы не тратить время на каждый запрос
-# Загружаем русскую и английскую языковые модели
 try:
     reader = easyocr.Reader(['ru', 'en'], gpu=False)
 except Exception:
@@ -26,21 +25,13 @@ def extract_text_from_pure_scan(file_bytes: bytes) -> str:
         return ""
     
     try:
-        # Открываем PDF из памяти через PyMuPDF
         doc = fitz.open(stream=file_bytes, filetype="pdf")
         if len(doc) == 0:
             return ""
         
-        # Берем только первую страницу (титульник), чтобы уложиться в лимиты времени Vercel
         page = doc[0]
-        
-        # Рендерим страницу в картинку с хорошим качеством (DPI 150 достаточно для текста)
         pix = page.get_pixmap(dpi=150)
-        
-        # Конвертируем байты картинки в формат, который понимает EasyOCR
         img_bytes = pix.tobytes("png")
-        
-        # Распознаем текст (detail=0 возвращает просто список строк)
         ocr_result = reader.readtext(img_bytes, detail=0)
         
         return "\n".join(ocr_result)
@@ -60,11 +51,9 @@ def extract_pdf_info(file_bytes: bytes):
     except Exception:
         pass
 
-    # ГИБРИДНЫЙ ПРОВЕРКА: Если pypdf ничего не нашел (или нашел мусор), значит это скан/картинка
     if len(text.strip()) < 15:
         text = extract_text_from_pure_scan(file_bytes)
 
-    # --- Дальше идет твоя стандартная логика разбора по регуляркам ---
     code_match = re.search(r'\b\d{2}\.\d{2}\.\d{2}\b', text)
     code = code_match.group(0) if code_match else "00.00.00"
 
@@ -400,7 +389,7 @@ async def main_page():
                 padding: 8px 12px; 
                 background: rgba(255, 255, 255, 0.45); 
                 border-left: 3px solid var(--primary-blue); 
-                border-radius: 4px 10px 10px 4px; 
+                border-radius: 10px; 
                 color: var(--primary-black); 
                 font-weight: 500; 
                 backdrop-filter: blur(5px);
@@ -413,27 +402,29 @@ async def main_page():
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
-                margin-right: 10px;
+                margin-right: 15px;
                 flex-grow: 1;
             }
-            .remove-btn {
-                background: none;
-                border: none;
-                color: rgba(13, 13, 14, 0.4);
-                padding: 4px 8px;
-                font-size: 14px;
+            
+            /* Новая явная кнопка удаления */
+            .file-delete-btn {
+                background: #ffffff;
+                color: var(--error-red);
+                border: 1px solid rgba(255, 59, 48, 0.2);
+                padding: 5px 10px;
+                font-size: 11px;
+                font-weight: bold;
+                text-transform: uppercase;
                 cursor: pointer;
                 width: auto;
                 box-shadow: none;
                 border-radius: 6px;
                 transition: all 0.2s;
-                display: flex;
-                align-items: center;
-                justify-content: center;
             }
-            .remove-btn:hover {
-                background: rgba(255, 59, 48, 0.1) !important;
-                color: var(--error-red) !important;
+            .file-delete-btn:hover {
+                background: var(--error-red) !important;
+                color: #ffffff !important;
+                border-color: var(--error-red) !important;
                 box-shadow: none !important;
                 transform: none !important;
             }
@@ -642,14 +633,14 @@ async def main_page():
                 nameSpan.className = 'file-name';
                 nameSpan.textContent = `${index + 1}. ${file.name}`;
                 
-                const removeBtn = document.createElement('button');
-                removeBtn.type = 'button';
-                removeBtn.className = 'remove-btn';
-                removeBtn.innerHTML = '✕';
-                removeBtn.onclick = () => removeFile(index);
+                const deleteBtn = document.createElement('button');
+                deleteBtn.type = 'button';
+                deleteBtn.className = 'file-delete-btn';
+                deleteBtn.textContent = 'Удалить';
+                deleteBtn.onclick = () => removeFile(index);
                 
                 item.appendChild(nameSpan);
-                item.appendChild(removeBtn);
+                item.appendChild(deleteBtn);
                 fileList.appendChild(item);
             });
             submitBtn.disabled = selectedFiles.length === 0;
