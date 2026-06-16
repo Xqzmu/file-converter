@@ -3,14 +3,13 @@ import re
 import zipfile
 from io import BytesIO
 from typing import List
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
-from fastapi.responses import HTMLResponse, StreamingResponse, FileResponse
-import pypdf
 
-# Дополнительные библиотеки для OCR сканов
-import fitz  # Из пакета PyMuPDF (очень быстрый и легкий)
 import easyocr
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
+import fitz  # Из пакета PyMuPDF (очень быстрый и легкий)
 import numpy as np
+import pypdf
 
 app = FastAPI()
 
@@ -628,7 +627,6 @@ async def main_page():
             }
         }
 
-        // Функция удаления конкретного файла по его индексу в массиве
         function removeFile(index) {
             selectedFiles.splice(index, 1);
             updateInterface();
@@ -645,7 +643,7 @@ async def main_page():
                 nameSpan.textContent = `${index + 1}. ${file.name}`;
                 
                 const removeBtn = document.createElement('button');
-                removeBtn.type = 'button'; // Чтобы кнопка не сабмитила форму случайно
+                removeBtn.type = 'button';
                 removeBtn.className = 'remove-btn';
                 removeBtn.innerHTML = '✕';
                 removeBtn.onclick = () => removeFile(index);
