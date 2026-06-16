@@ -7,20 +7,65 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse, FileResponse
 import pypdf
 
+# Дополнительные библиотеки для OCR сканов
+import fitz  # Из пакета PyMuPDF (очень быстрый и легкий)
+import easyocr
+import numpy as np
+
 app = FastAPI()
 
+# Инициализируем OCR-ридер один раз при старте приложения, чтобы не тратить время на каждый запрос
+# Загружаем русскую и английскую языковые модели
+try:
+    reader = easyocr.Reader(['ru', 'en'], gpu=False)
+except Exception:
+    reader = None
+
+def extract_text_from_pure_scan(file_bytes: bytes) -> str:
+    """Если в PDF нет текстового слоя, рендерит первую страницу в картинку и гонит через OCR."""
+    if reader is None:
+        return ""
+    
+    try:
+        # Открываем PDF из памяти через PyMuPDF
+        doc = fitz.open(stream=file_bytes, filetype="pdf")
+        if len(doc) == 0:
+            return ""
+        
+        # Берем только первую страницу (титульник), чтобы уложиться в лимиты времени Vercel
+        page = doc[0]
+        
+        # Рендерим страницу в картинку с хорошим качеством (DPI 150 достаточно для текста)
+        pix = page.get_pixmap(dpi=150)
+        
+        # Конвертируем байты картинки в формат, который понимает EasyOCR
+        img_bytes = pix.tobytes("png")
+        
+        # Распознаем текст (detail=0 возвращает просто список строк)
+        ocr_result = reader.readtext(img_bytes, detail=0)
+        
+        return "\n".join(ocr_result)
+    except Exception as e:
+        print(f"Ошибка OCR распознавания: {e}")
+        return ""
+
 def extract_pdf_info(file_bytes: bytes):
-    """Вытаскивает любые текстовые паттерны из первых страниц PDF."""
+    """Вытаскивает текстовые паттерны. Если текст пустой — запускает OCR скана."""
     text = ""
     try:
-        reader = pypdf.PdfReader(BytesIO(file_bytes))
-        for i in range(min(3, len(reader.pages))):
-            page_text = reader.pages[i].extract_text()
+        pdf_reader = pypdf.PdfReader(BytesIO(file_bytes))
+        for i in range(min(3, len(pdf_reader.pages))):
+            page_text = pdf_reader.pages[i].extract_text()
             if page_text:
                 text += page_text + "\n"
     except Exception:
         pass
 
+    # ГИБРИДНЫЙ ПРОВЕРКА: Если pypdf ничего не нашел (или нашел мусор), значит это скан/картинка
+    if len(text.strip()) < 15:
+        text = extract_text_from_pure_scan(file_bytes)
+
+    # --- Дальше идет твоя стандартная логика разбора по регуляркам ---
     code_match = re.search(r'\b\d{2}\.\d{2}\.\d{2}\b', text)
     code = code_match.group(0) if code_match else "00.00.00"
 
@@ -73,7 +118,6 @@ async def get_logo():
         return FileResponse("logo.png")
     return HTTPException(status_code=404, detail="Logo not found")
 
-# --- ВОТ ЭТОТ ЭНДПОИНТ ПРОПАЛ ИЗ Python-ЛОГИКИ ---
 @app.post("/api/rename")
 async def rename_pdfs(files: List[UploadFile] = File(...), template: str = Form(...)):
     if not files:
@@ -123,16 +167,13 @@ async def main_page():
                             radial-gradient(circle at 80% 80%, rgba(0, 132, 255, 0.2) 0%, transparent 50%),
                             linear-gradient(135deg, #eef2f7 0%, #d5dadf 100%);
                 background-attachment: fixed;
-                
-                /* Включаем вертикальный стек для активации плавного скролла */
                 display: flex;
                 flex-direction: column;
                 align-items: center;
                 justify-content: flex-start;
-                
                 min-height: 100vh;
                 margin: 0;
-                padding: 40px 15px 60px 15px; /* Нижний отступ дает мягкую зону при прокрутке */
+                padding: 40px 15px 60px 15px;
                 box-sizing: border-box;
                 position: relative;
             }
@@ -170,7 +211,6 @@ async def main_page():
                 filter: blur(4px);
             }
 
-            /* Главный контейнер конвертера */
             .container {
                 background: var(--glass-bg);
                 backdrop-filter: blur(40px) saturate(200%);
@@ -183,7 +223,6 @@ async def main_page():
                     0 1px 3px rgba(0, 0, 0, 0.02),
                     0 10px 30px rgba(0, 0, 0, 0.04),
                     0 30px 60px rgba(0, 50, 100, 0.08);
-
                 padding: 45px 35px;
                 width: 100%;
                 max-width: 500px;
@@ -346,7 +385,6 @@ async def main_page():
             #file-list { text-align: left; max-height: 110px; overflow-y: auto; margin-top: 15px; font-size: 12.5px; }
             .file-item { padding: 6px 10px; background: rgba(255, 255, 255, 0.4); border-left: 3px solid var(--primary-blue); border-radius: 0 6px 6px 0; margin-bottom: 4px; color: var(--primary-black); font-weight: 500; }
 
-            /* --- СТИЛИ ДЛЯ ИНСТРУКЦИИ И ФУТЕРА --- */
             .instruction-card {
                 background: rgba(255, 255, 255, 0.35);
                 backdrop-filter: blur(25px) saturate(160%);
@@ -483,7 +521,9 @@ async def main_page():
             
             <button type="submit" id="submit-btn" disabled>Обработать документы (ZIP)</button>
         </form>
-    </div> <div class="instruction-card">
+    </div>
+
+    <div class="instruction-card">
         <h4>💡 Памятка по разбору документов</h4>
         <div class="instruction-step">
             <strong>{тип}</strong> — автоматически определяет категорию: <code>РПД</code>, <code>Практика</code>, <code>ФОС</code> или <code>Аннотация</code>.
@@ -553,7 +593,7 @@ async def main_page():
             selectedFiles.forEach(file => formData.append('files', file));
             formData.append('template', document.getElementById('template-input').value);
 
-            submitBtn.textContent = 'Сборка архива...';
+            submitBtn.textContent = 'Распознавание и сборка...'; // Обновили текст для OCR
             submitBtn.disabled = true;
 
             try {
@@ -561,7 +601,7 @@ async def main_page():
                     method: 'POST',
                     body: formData
                 });
-                if (!response.ok) throw new Error('Ошибка обработки');
+                if (!response.ok) throw new Error('Ошибка обработки файлов');
 
                 const blob = await response.blob();
                 const downloadUrl = window.URL.createObjectURL(blob);
