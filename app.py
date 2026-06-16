@@ -153,6 +153,7 @@ async def main_page():
                 --primary-black: #0d0d0e;
                 --glass-bg: rgba(255, 255, 255, 0.55);
                 --glass-border: rgba(255, 255, 255, 0.5);
+                --error-red: #ff3b30;
             }
 
             html, body {
@@ -382,8 +383,61 @@ async def main_page():
                 box-shadow: none; 
             }
             
-            #file-list { text-align: left; max-height: 110px; overflow-y: auto; margin-top: 15px; font-size: 12.5px; }
-            .file-item { padding: 6px 10px; background: rgba(255, 255, 255, 0.4); border-left: 3px solid var(--primary-blue); border-radius: 0 6px 6px 0; margin-bottom: 4px; color: var(--primary-black); font-weight: 500; }
+            /* Стили для списка файлов и кнопок удаления */
+            #file-list { 
+                text-align: left; 
+                max-height: 160px; 
+                overflow-y: auto; 
+                margin-top: 15px; 
+                font-size: 12.5px;
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+            }
+            .file-item { 
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 8px 12px; 
+                background: rgba(255, 255, 255, 0.45); 
+                border-left: 3px solid var(--primary-blue); 
+                border-radius: 4px 10px 10px 4px; 
+                color: var(--primary-black); 
+                font-weight: 500; 
+                backdrop-filter: blur(5px);
+                transition: background 0.2s;
+            }
+            .file-item:hover {
+                background: rgba(255, 255, 255, 0.6);
+            }
+            .file-name {
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                margin-right: 10px;
+                flex-grow: 1;
+            }
+            .remove-btn {
+                background: none;
+                border: none;
+                color: rgba(13, 13, 14, 0.4);
+                padding: 4px 8px;
+                font-size: 14px;
+                cursor: pointer;
+                width: auto;
+                box-shadow: none;
+                border-radius: 6px;
+                transition: all 0.2s;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .remove-btn:hover {
+                background: rgba(255, 59, 48, 0.1) !important;
+                color: var(--error-red) !important;
+                box-shadow: none !important;
+                transform: none !important;
+            }
 
             .instruction-card {
                 background: rgba(255, 255, 255, 0.35);
@@ -574,12 +628,30 @@ async def main_page():
             }
         }
 
+        // Функция удаления конкретного файла по его индексу в массиве
+        function removeFile(index) {
+            selectedFiles.splice(index, 1);
+            updateInterface();
+        }
+
         function updateInterface() {
             fileList.innerHTML = '';
             selectedFiles.forEach((file, index) => {
                 const item = document.createElement('div');
                 item.className = 'file-item';
-                item.textContent = `${index + 1}. ${file.name}`;
+                
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'file-name';
+                nameSpan.textContent = `${index + 1}. ${file.name}`;
+                
+                const removeBtn = document.createElement('button');
+                removeBtn.type = 'button'; // Чтобы кнопка не сабмитила форму случайно
+                removeBtn.className = 'remove-btn';
+                removeBtn.innerHTML = '✕';
+                removeBtn.onclick = () => removeFile(index);
+                
+                item.appendChild(nameSpan);
+                item.appendChild(removeBtn);
                 fileList.appendChild(item);
             });
             submitBtn.disabled = selectedFiles.length === 0;
@@ -593,7 +665,7 @@ async def main_page():
             selectedFiles.forEach(file => formData.append('files', file));
             formData.append('template', document.getElementById('template-input').value);
 
-            submitBtn.textContent = 'Распознавание и сборка...'; // Обновили текст для OCR
+            submitBtn.textContent = 'Распознавание и сборка...';
             submitBtn.disabled = true;
 
             try {
